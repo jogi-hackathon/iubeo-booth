@@ -236,9 +236,67 @@ export const drawBody = (
   ctx.restore();
 };
 
-// ラベルを置く位置。頭の右上。
-export const labelAnchor = (b: Body, view: View, m: number) => ({
-  x: view.x(get(b, J.head, 0)) + HEAD_RADIUS * m * 1.4,
-  y: view.y(get(b, J.head, 1)) - HEAD_RADIUS * m * 1.2,
-  visible: get(b, J.head, 2) >= VISIBLE,
-});
+// MediaPipe は複数人モードで、同じ人にほぼ重なる骨格を何本も返すことがある。
+// 見えている関節の外接矩形が大きく重なる骨格は同じ人とみなし、よく見えている方だけ残す。
+const DUPLICATE_OVERLAP = 0.5;
+
+interface Box {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+// aspect = 映像の横 / 縦。正規化座標の x を y と同じ尺度に揃える。
+const boundsOf = (b: Body, aspect: number): Box | null => {
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  for (let j = 0; j < JOINT_COUNT; j++) {
+    if (get(b, j, 2) < VISIBLE) {
+      continue;
+    }
+    const x = get(b, j, 0) * aspect;
+    const y = get(b, j, 1);
+    x0 = Math.min(x0, x);
+    y0 = Math.min(y0, y);
+    x1 = Math.max(x1, x);
+    y1 = Math.max(y1, y);
+  }
+  return x0 < x1 && y0 < y1 ? {x0, y0, x1, y1} : null;
+};
+
+const area = (r: Box) => (r.x1 - r.x0) * (r.y1 - r.y0);
+
+// 小さい方の矩形のうち、どれだけが相手に含まれるか。体の一部だけの重複も拾える。
+const overlap = (a: Box, b: Box) => {
+  const w = Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0);
+  const h = Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0);
+  if (w <= 0 || h <= 0) {
+    return 0;
+  }
+  return (w * h) / Math.min(area(a), area(b));
+};
+
+const scoreOf = (b: Body) => {
+  let sum = 0;
+  for (let j = 0; j < JOINT_COUNT; j++) {
+    sum += get(b, j, 2);
+  }
+  return sum;
+};
+
+export const dedupe = (bodies: Body[], aspect: number): Body[] => {
+  const ranked = bodies
+    .map((body) => ({body, box: boundsOf(body, aspect), score: scoreOf(body)}))
+    .filter((c): c is {body: Body; box: Box; score: number} => c.box !== null)
+    .sort((a, b) => b.score - a.score);
+  const kept: typeof ranked = [];
+  for (const c of ranked) {
+    if (kept.every((k) => overlap(k.box, c.box) < DUPLICATE_OVERLAP)) {
+      kept.push(c);
+    }
+  }
+  return kept.map((k) => k.body);
+};
