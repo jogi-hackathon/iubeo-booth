@@ -7,7 +7,7 @@ import {
 import {demoLandmarks} from "./demo";
 import "./style.css";
 import {coverView, createBody, dedupe, drawBody, metersToPx, toBody} from "./skeleton";
-import {createTracker, LOST_AFTER_MS} from "./tracker";
+import {bodyOf, createTracker, LOST_AFTER_MS} from "./tracker";
 
 const params = new URLSearchParams(location.search);
 const MODEL = params.get("model") === "full" ? "full" : "lite";
@@ -61,11 +61,12 @@ const render = (now: number) => {
   }
   const view = coverView(vw, vh, w, h);
   for (const t of tracker.tracks) {
-    const m = metersToPx(t.body, view, vw, vh);
+    const body = bodyOf(t);
+    const m = metersToPx(body, view, vw, vh);
     // 見失った骨格はその場で止めず、消えるまでの間に薄くしていく。
     const fadeIn = Math.min(1, (now - t.bornAt) / FADE_IN_MS);
     const fadeOut = 1 - Math.min(1, (now - t.seenAt) / LOST_AFTER_MS);
-    drawBody(ctx, t.body, view, m, fadeIn * fadeOut);
+    drawBody(ctx, body, view, m, fadeIn * fadeOut);
   }
 };
 

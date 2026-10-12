@@ -1,14 +1,16 @@
-import {type Body, centerOf, createBody, smooth} from "./skeleton";
+import {type BodyFilter, createFilter, step} from "./filter";
+import {type Body, centerOf} from "./skeleton";
 
 export interface Track {
-  body: Body;
+  filter: BodyFilter;
   bornAt: number;
   seenAt: number;
 }
 
+export const bodyOf = (t: Track): Body => t.filter.value;
+
 const MATCH_DISTANCE = 0.18;
 export const LOST_AFTER_MS = 600;
-const SMOOTHING = 0.55;
 
 export const createTracker = () => {
   const tracks: Track[] = [];
@@ -20,7 +22,7 @@ export const createTracker = () => {
       let best: Track | undefined;
       let bestD = MATCH_DISTANCE;
       for (const t of free) {
-        const [tx, ty] = centerOf(t.body);
+        const [tx, ty] = centerOf(bodyOf(t));
         const d = Math.hypot(cx - tx, cy - ty);
         if (d < bestD) {
           best = t;
@@ -29,13 +31,11 @@ export const createTracker = () => {
       }
       if (best) {
         free.delete(best);
-        smooth(best.body, body, SMOOTHING);
+        step(best.filter, body, now);
         best.seenAt = now;
         continue;
       }
-      const t: Track = {body: createBody(), bornAt: now, seenAt: now};
-      t.body.set(body);
-      tracks.push(t);
+      tracks.push({filter: createFilter(body, now), bornAt: now, seenAt: now});
     }
     for (let i = tracks.length - 1; i >= 0; i--) {
       const t = tracks[i];

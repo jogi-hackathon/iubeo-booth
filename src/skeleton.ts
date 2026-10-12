@@ -90,17 +90,9 @@ const set = (out: Body, j: number, x: number, y: number, v: number) => {
 
 const get = (b: Body, j: number, k: 0 | 1 | 2): number => b[j * 3 + k] ?? 0;
 
-// Pose は映っていない脚や腰まで推測して返し、visibility も高めに付けることがある。
-// カメラの枠の外にある関節は見えていないものとして扱い、胸像なら胸像のまま描く。
-const FRAME_MARGIN = 0.02;
-const inFrame = (m: NormalizedLandmark) =>
-  m.x >= -FRAME_MARGIN &&
-  m.x <= 1 + FRAME_MARGIN &&
-  m.y >= -FRAME_MARGIN &&
-  m.y <= 1 + FRAME_MARGIN;
+const seenness = (m: NormalizedLandmark) => m.visibility ?? 1;
 
-const seenness = (m: NormalizedLandmark) =>
-  inFrame(m) ? Math.min(m.visibility ?? 1, m.presence ?? 1) : 0;
+const shown = (b: Body, j: number) => get(b, j, 2) >= VISIBLE;
 
 export const toBody = (marks: NormalizedLandmark[], out: Body): Body => {
   for (const [name, i] of Object.entries(MP)) {
@@ -141,12 +133,6 @@ export const centerOf = (b: Body): [number, number] => [
     get(b, J.rHip, 1)) /
     4,
 ];
-
-export const smooth = (into: Body, next: Body, alpha: number) => {
-  for (let i = 0; i < into.length; i++) {
-    into[i] = (into[i] ?? 0) + ((next[i] ?? 0) - (into[i] ?? 0)) * alpha;
-  }
-};
 
 export interface View {
   // 正規化座標 -> 画面 px。カメラ映像を cover で画面に合わせ、左右反転する。
@@ -202,9 +188,7 @@ export const metersToPx = (b: Body, view: View, vw: number, vh: number) => {
       vh *
       view.unit,
   );
-  // 腰が映っていない胸像では、推測の腰で胴の長さを測らない。
-  const hips = get(b, J.lHip, 2) >= VISIBLE && get(b, J.rHip, 2) >= VISIBLE;
-  return hips ? Math.max(shoulder / 0.38, torso / 0.5) : shoulder / 0.38;
+  return Math.max(shoulder / 0.38, torso / 0.5);
 };
 
 export const drawBody = (
@@ -216,7 +200,8 @@ export const drawBody = (
 ) => {
   const px = (j: number) => view.x(get(b, j, 0));
   const py = (j: number) => view.y(get(b, j, 1));
-  const seen = (j: number) => get(b, j, 2) >= VISIBLE;
+  const seen = (j: number) => shown(b, j);
+  const bone = (a: number, c: number) => seen(a) && seen(c);
 
   const pass = (grow: number, color: string) => {
     ctx.strokeStyle = color;
@@ -225,7 +210,7 @@ export const drawBody = (
     ctx.lineWidth = (BONE_RADIUS + grow) * 2 * m;
     ctx.beginPath();
     for (const [a, c] of BONES) {
-      if (!seen(a) || !seen(c)) {
+      if (!bone(a, c)) {
         continue;
       }
       ctx.moveTo(px(a), py(a));
@@ -268,7 +253,7 @@ const boundsOf = (b: Body, aspect: number): Box | null => {
   let x1 = -Infinity;
   let y1 = -Infinity;
   for (let j = 0; j < JOINT_COUNT; j++) {
-    if (get(b, j, 2) < VISIBLE) {
+    if (!shown(b, j)) {
       continue;
     }
     const x = get(b, j, 0) * aspect;
