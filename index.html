@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>IUBEO Observer</title>
+    <link rel="icon" href="/iubeo_logo.svg" />
+  </head>
+  <body>
+    <video id="camera" playsinline muted></video>
+    <canvas id="stage"></canvas>
+
+    <header class="top">
+      <img class="logo" src="/iubeo_logo.svg" alt="IUBEO" />
+      <div class="meter">
+        <span class="meter-label">検出中のリソース</span>
+        <span id="count" class="meter-value">00</span>
+      </div>
+    </header>
+
+    <div id="headline" class="headline"></div>
+
+    <footer class="bottom">
+      <ol id="log" class="log"></ol>
+      <span id="clock" class="clock"></span>
+    </footer>
+
+    <div id="debug" class="debug"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
