@@ -3,17 +3,22 @@
 //
 //   print/file-panels-a3-tiles.pdf  A2 のパネル 1 枚を A3 2 枚に分けたもの。コンビニで刷れる
 //   print/file-panels-a2.pdf        A2 1 枚刷り。キンコーズなど A2 を刷れる店向け
+//   print/file-panels-a4.pdf        A4 1 枚刷り。家やコンビニのプリンタ向け
+//   print/png/*.png                 A4 版を 300 dpi の PNG にしたもの (macOS の swift で変換)
 //
 // 依存を増やさないため、PDF は自前で書き出す。座標はすべて mm、y は上向き。
+import {execFileSync} from "node:child_process";
 import {mkdir, writeFile} from "node:fs/promises";
 import {dirname, join} from "node:path";
 import {fileURLToPath} from "node:url";
 
 const OUT = join(dirname(fileURLToPath(import.meta.url)), "..", "print");
 
-// ゲーム内の 0.1 m を何 mm に拡大するか。3 枚とも同じ倍率にして、ゲームと同じ大きさの関係を保つ。
-// 440 にすると、どれも A2 (420×594) に収まり、A3 2 枚に分けられる。
-const SCALE = 4400;
+// ゲーム内の 1 m を何 mm に拡大するか。3 枚とも同じ倍率にして、ゲームと同じ大きさの関係を保つ。
+// A2 版は 4400 (0.1 m → 440 mm) で、どれも A2 (420×594) に収まり、A3 2 枚に分けられる。
+// A4 版は 2000 (0.1 m → 200 mm) で、トンボまで含めて A4 1 枚に収まる。
+const SCALE_A2 = 4400;
+const SCALE_A4 = 2000;
 const BLEED = 3; // 仕上がり線の外に伸ばす黒。切りずれても白が出ないように
 const TAB = 12; // 継ぎ目で下になる側に残すのりしろ
 const A3 = [297, 420];
@@ -91,7 +96,7 @@ const FILES = {
 };
 
 // 仕上がりの外寸 (mm)。縁取りの外側まで
-const sizeOf = (f) => [(f.w + f.outline * 2) * SCALE, (f.h + f.outline * 2) * SCALE];
+const sizeOf = (f, scale) => [(f.w + f.outline * 2) * scale, (f.h + f.outline * 2) * scale];
 
 // ---- PDF の描画命令 -----------------------------------------------------------
 const PT = 72 / 25.4;
@@ -124,8 +129,8 @@ const path = () => {
 };
 
 // パネルの絵を、仕上がり左下を原点とする mm 座標で描く
-const panelOps = (f) => {
-  const [W, H] = sizeOf(f);
+const panelOps = (f, SCALE) => {
+  const [W, H] = sizeOf(f, SCALE);
   const p = path();
   const X = (x) => (x + f.w / 2 + f.outline) * SCALE;
   const Y = (y) => (y + f.h / 2 + f.outline) * SCALE;
@@ -199,7 +204,7 @@ const pageContent = (f, page) => {
 
   // 絵: 刷る範囲で切り抜いてから、仕上がり原点へ移す
   out.push("q", `${n(ox + r.x0)} ${n(oy + r.y0)} ${n(r.x1 - r.x0)} ${n(r.y1 - r.y0)} re W n`);
-  out.push(`1 0 0 1 ${n(ox)} ${n(oy)} cm`, ...panelOps(f), "Q");
+  out.push(`1 0 0 1 ${n(ox)} ${n(oy)} cm`, ...panelOps(f, page.scale), "Q");
 
   // トンボ: 仕上がり線の延長を、刷る範囲の外側に引く
   const m = marks();
@@ -242,7 +247,7 @@ const pageContent = (f, page) => {
 
 // 1 枚のパネルを A3 2 枚に分ける。横長は左右、縦長は上下に割る
 const tilePages = (f) => {
-  const [W, H] = sizeOf(f);
+  const [W, H] = sizeOf(f, SCALE_A2);
   const landscape = W >= H;
   const pages = [];
   const center = (size, r) => [
@@ -257,12 +262,14 @@ const tilePages = (f) => {
     pages.push({
       size, region: left, origin: center(size, left),
       cutX: [0], cutY: [0, H], seam: {axis: "x", at: seam},
+      scale: SCALE_A2,
       label: "A  LEFT  1/2",
       note: "Print on A3 at 100% (actual size). Keep the glue tab on the right; B goes on top, edge on the dashed marks.",
     });
     pages.push({
       size, region: right, origin: center(size, right),
       cutX: [seam, W], cutY: [0, H],
+      scale: SCALE_A2,
       label: "B  RIGHT  2/2",
       note: "Print on A3 at 100% (actual size). Cut along all marks, including the left edge, then lay over A.",
     });
@@ -274,12 +281,14 @@ const tilePages = (f) => {
     pages.push({
       size, region: top, origin: center(size, top),
       cutX: [0, W], cutY: [H], seam: {axis: "y", at: seam},
+      scale: SCALE_A2,
       label: "A  TOP  1/2",
       note: "Print on A3 landscape at 100% (actual size). Keep the glue tab at the bottom; B goes on top, edge on the dashed marks.",
     });
     pages.push({
       size, region: bottom, origin: center(size, bottom),
       cutX: [0, W], cutY: [0, seam],
+      scale: SCALE_A2,
       label: "B  BOTTOM  2/2",
       note: "Print on A3 landscape at 100% (actual size). Cut along all marks, including the top edge, then lay over A.",
     });
@@ -287,16 +296,20 @@ const tilePages = (f) => {
   return pages;
 };
 
-const a2Page = (f) => {
-  const [W, H] = sizeOf(f);
-  const size = W >= H ? [A2[1], A2[0]] : A2;
+const A4 = [210, 297];
+
+// 1 枚刷り。横長のパネルは用紙も横向きにする
+const sheetPage = (f, paper, scale, name) => {
+  const [W, H] = sizeOf(f, scale);
+  const size = W >= H ? [paper[1], paper[0]] : paper;
   const region = {x0: -BLEED, y0: -BLEED, x1: W + BLEED, y1: H + BLEED};
   return {
     size, region,
     origin: [(size[0] - W) / 2, (size[1] - H) / 2 + 4],
     cutX: [0, W], cutY: [0, H],
-    label: "A2  1/1",
-    note: "Print on A2 at 100% (actual size). Cut along the marks.",
+    scale,
+    label: `${name}  1/1`,
+    note: `Print on ${name} at 100% (actual size). Cut along the marks.`,
   };
 };
 
@@ -337,14 +350,28 @@ await writeFile(
   join(OUT, "file-panels-a3-tiles.pdf"),
   buildPdf(files.flatMap((f) => tilePages(f).map((p) => ({size: p.size, content: pageContent(f, p)})))),
 );
-await writeFile(
-  join(OUT, "file-panels-a2.pdf"),
+const sheets = (paper, scale, name) =>
   buildPdf(files.map((f) => {
-    const p = a2Page(f);
+    const p = sheetPage(f, paper, scale, name);
     return {size: p.size, content: pageContent(f, p)};
-  })),
-);
-for (const f of files) {
-  const [W, H] = sizeOf(f);
-  console.log(`${f.title.padEnd(17)} ${W.toFixed(1)} × ${H.toFixed(1)} mm`);
+  }));
+await writeFile(join(OUT, "file-panels-a2.pdf"), sheets(A2, SCALE_A2, "A2"));
+await writeFile(join(OUT, "file-panels-a4.pdf"), sheets(A4, SCALE_A4, "A4"));
+
+// A4 版を 300 dpi の PNG に。PDF の描画は macOS の PDFKit に任せる
+const KINDS = Object.keys(FILES);
+if (process.platform === "darwin") {
+  const png = join(OUT, "png");
+  await mkdir(png, {recursive: true});
+  const swift = join(dirname(fileURLToPath(import.meta.url)), "pdf-to-png.swift");
+  execFileSync("swift", [swift, join(OUT, "file-panels-a4.pdf"), png, "300", ...KINDS.map((k) => `file-panel-a4-${k}`)], {stdio: "inherit"});
+} else {
+  console.log("PNG は macOS でだけ書き出す (swift の PDFKit を使うため)");
+}
+
+for (const [name, scale] of [["A2", SCALE_A2], ["A4", SCALE_A4]]) {
+  for (const f of files) {
+    const [W, H] = sizeOf(f, scale);
+    console.log(`${name}  ${f.title.padEnd(17)} ${W.toFixed(1)} × ${H.toFixed(1)} mm`);
+  }
 }
