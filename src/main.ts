@@ -154,6 +154,20 @@ const start = async () => {
   requestAnimationFrame(loop);
 };
 
+const CURSOR_IDLE_MS = 2000;
+let cursorTimer = 0;
+const wakeCursor = () => {
+  document.body.classList.remove("idle");
+  clearTimeout(cursorTimer);
+  cursorTimer = window.setTimeout(
+    () => document.body.classList.add("idle"),
+    CURSOR_IDLE_MS,
+  );
+};
+addEventListener("pointermove", wakeCursor);
+addEventListener("pointerdown", wakeCursor);
+wakeCursor();
+
 addEventListener("keydown", (e) => {
   if (e.key === "f") {
     if (document.fullscreenElement) {

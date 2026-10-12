@@ -16,8 +16,12 @@ body {
   overflow: hidden;
   background: var(--bg);
   color: var(--ink);
-  cursor: none;
   user-select: none;
+}
+
+/* マウスを動かしている間だけカーソルを出す。放置すると消える。 */
+body.idle {
+  cursor: none;
 }
 
 #stage {
@@ -56,10 +60,6 @@ body {
   font-size: 11px;
   color: var(--sub);
   display: none;
-}
-
-body.debug {
-  cursor: default;
 }
 
 body.debug .debug {
