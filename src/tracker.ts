@@ -10,7 +10,11 @@ export interface Track {
 export const bodyOf = (t: Track): Body => t.filter.value;
 
 const MATCH_DISTANCE = 0.18;
-export const LOST_AFTER_MS = 600;
+// 見失っても、しばらくはその場に据え置き、そのあと薄くして消す。
+// 一瞬の検出漏れで骨格が点滅しないように。
+export const HOLD_MS = 700;
+export const FADE_MS = 600;
+const LOST_AFTER_MS = HOLD_MS + FADE_MS;
 
 export const createTracker = () => {
   const tracks: Track[] = [];

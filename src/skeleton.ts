@@ -94,6 +94,10 @@ const seenness = (m: NormalizedLandmark) => m.visibility ?? 1;
 
 const shown = (b: Body, j: number) => get(b, j, 2) >= VISIBLE;
 
+// 胴体は机や人の陰で visibility が下がっても、推測された位置のまま描き続ける。
+// 腕や脚だけが見え隠れし、胴が消えて頭と手が浮くことはない。
+const TORSO = new Set([J.head, J.lShoulder, J.rShoulder, J.lHip, J.rHip, NECK]);
+
 export const toBody = (marks: NormalizedLandmark[], out: Body): Body => {
   for (const [name, i] of Object.entries(MP)) {
     const m = lm(marks, i);
@@ -200,7 +204,7 @@ export const drawBody = (
 ) => {
   const px = (j: number) => view.x(get(b, j, 0));
   const py = (j: number) => view.y(get(b, j, 1));
-  const seen = (j: number) => shown(b, j);
+  const seen = (j: number) => TORSO.has(j) || shown(b, j);
   const bone = (a: number, c: number) => seen(a) && seen(c);
 
   const pass = (grow: number, color: string) => {
