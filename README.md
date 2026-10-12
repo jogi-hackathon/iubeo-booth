@@ -3,6 +3,8 @@
 IUBEO の展示ブースで、前を通る人を MediaPipe のランドマークだけで映すモニター。
 映像は表示せず、ゲーム内のプレイヤーと同じ白い骨格だけを描く。画面の文字は IUBEO のロゴだけ。
 
+公開版: https://jogi-hackathon.github.io/iubeo-booth/ （`main` に入ると GitHub Actions で自動デプロイ）
+
 ## 起動
 
 ```sh
