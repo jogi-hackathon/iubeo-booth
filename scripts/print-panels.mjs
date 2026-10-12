@@ -6,11 +6,12 @@
 //   print/file-panels-a4.pdf        A4 1 枚刷り。家やコンビニのプリンタ向け
 //   print/png/*.png                 A4 版を 300 dpi の PNG にしたもの (macOS の swift で変換)
 //
-// 依存を増やさないため、PDF は自前で書き出す。座標はすべて mm、y は上向き。
-import {execFileSync} from "node:child_process";
+// 座標はすべて mm、y は上向き。
 import {mkdir, writeFile} from "node:fs/promises";
 import {dirname, join} from "node:path";
 import {fileURLToPath} from "node:url";
+
+import {A2, A3, A4, buildPdf, MARK, marks, n, PT, ruler, text, toPng} from "./lib/pdf.mjs";
 
 const OUT = join(dirname(fileURLToPath(import.meta.url)), "..", "print");
 
@@ -21,8 +22,6 @@ const SCALE_A2 = 4400;
 const SCALE_A4 = 2000;
 const BLEED = 3; // 仕上がり線の外に伸ばす黒。切りずれても白が出ないように
 const TAB = 12; // 継ぎ目で下になる側に残すのりしろ
-const A3 = [297, 420];
-const A2 = [420, 594];
 
 // ---- ファイルの形 (モデル座標: m、原点は中心、y は上) ------------------------
 const FILES = {
@@ -99,8 +98,6 @@ const FILES = {
 const sizeOf = (f, scale) => [(f.w + f.outline * 2) * scale, (f.h + f.outline * 2) * scale];
 
 // ---- PDF の描画命令 -----------------------------------------------------------
-const PT = 72 / 25.4;
-const n = (v) => (Math.round(v * 1000) / 1000).toString();
 const GRAY = {ink: "0.102 g", white: "1 g"}; // ゲームと同じ #1a1a1a と白
 
 const path = () => {
@@ -171,27 +168,6 @@ const panelOps = (f, SCALE) => {
   }
   f.draw(shape);
   return p.ops;
-};
-
-// ---- トンボ・ラベル ------------------------------------------------------------
-const MARK = 4; // トンボの長さ
-const marks = () => {
-  const ops = ["0 G", "0.12 w"];
-  const line = (x1, y1, x2, y2) => ops.push(`${n(x1)} ${n(y1)} m ${n(x2)} ${n(y2)} l S`);
-  return {ops, line};
-};
-
-const text = (x, y, size, str, gray = "0.35") =>
-  `BT /F1 ${n(size * PT)} Tf ${gray} g ${n(x * PT)} ${n(y * PT)} Td (${str.replace(/[()\\]/g, "\\$&")}) Tj ET`;
-
-// 50 mm の目盛り。刷り上がりで測り、100% で刷れたか確かめる
-const ruler = (x, y) => {
-  const m = marks();
-  m.line(x, y, x + 50, y);
-  for (let i = 0; i <= 5; i++) {
-    m.line(x + i * 10, y, x + i * 10, y + (i % 5 ? 1.5 : 3));
-  }
-  return m.ops;
 };
 
 // ---- ページ組み ----------------------------------------------------------------
@@ -296,8 +272,6 @@ const tilePages = (f) => {
   return pages;
 };
 
-const A4 = [210, 297];
-
 // 1 枚刷り。横長のパネルは用紙も横向きにする
 const sheetPage = (f, paper, scale, name) => {
   const [W, H] = sizeOf(f, scale);
@@ -311,37 +285,6 @@ const sheetPage = (f, paper, scale, name) => {
     label: `${name}  1/1`,
     note: `Print on ${name} at 100% (actual size). Cut along the marks.`,
   };
-};
-
-// ---- PDF の書き出し ------------------------------------------------------------
-const buildPdf = (pages) => {
-  const objs = [];
-  const add = (body) => (objs.push(body), objs.length);
-  const catalog = add(null);
-  const pagesId = add(null);
-  const font = add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
-  const kids = [];
-  for (const {size, content} of pages) {
-    const stream = add(`<< /Length ${Buffer.byteLength(content)} >>\nstream\n${content}\nendstream`);
-    kids.push(add(
-      `<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${n(size[0] * PT)} ${n(size[1] * PT)}] ` +
-      `/Resources << /Font << /F1 ${font} 0 R >> >> /Contents ${stream} 0 R >>`,
-    ));
-  }
-  objs[catalog - 1] = `<< /Type /Catalog /Pages ${pagesId} 0 R >>`;
-  objs[pagesId - 1] = `<< /Type /Pages /Kids [${kids.map((k) => `${k} 0 R`).join(" ")}] /Count ${kids.length} >>`;
-
-  let pdf = "%PDF-1.4\n";
-  const offsets = [];
-  objs.forEach((body, i) => {
-    offsets.push(Buffer.byteLength(pdf));
-    pdf += `${i + 1} 0 obj\n${body}\nendobj\n`;
-  });
-  const xref = Buffer.byteLength(pdf);
-  pdf += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n`;
-  for (const o of offsets) pdf += `${String(o).padStart(10, "0")} 00000 n \n`;
-  pdf += `trailer\n<< /Size ${objs.length + 1} /Root ${catalog} 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
-  return pdf;
 };
 
 const files = Object.values(FILES);
@@ -358,16 +301,8 @@ const sheets = (paper, scale, name) =>
 await writeFile(join(OUT, "file-panels-a2.pdf"), sheets(A2, SCALE_A2, "A2"));
 await writeFile(join(OUT, "file-panels-a4.pdf"), sheets(A4, SCALE_A4, "A4"));
 
-// A4 版を 300 dpi の PNG に。PDF の描画は macOS の PDFKit に任せる
-const KINDS = Object.keys(FILES);
-if (process.platform === "darwin") {
-  const png = join(OUT, "png");
-  await mkdir(png, {recursive: true});
-  const swift = join(dirname(fileURLToPath(import.meta.url)), "pdf-to-png.swift");
-  execFileSync("swift", [swift, join(OUT, "file-panels-a4.pdf"), png, "300", ...KINDS.map((k) => `file-panel-a4-${k}`)], {stdio: "inherit"});
-} else {
-  console.log("PNG は macOS でだけ書き出す (swift の PDFKit を使うため)");
-}
+// A4 版を 300 dpi の PNG に
+await toPng(join(OUT, "file-panels-a4.pdf"), join(OUT, "png"), Object.keys(FILES).map((k) => `file-panel-a4-${k}`));
 
 for (const [name, scale] of [["A2", SCALE_A2], ["A4", SCALE_A4]]) {
   for (const f of files) {

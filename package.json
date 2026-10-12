@@ -9,7 +9,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "fetch:model": "node scripts/fetch-model.mjs",
-    "print:panels": "node scripts/print-panels.mjs"
+    "print:panels": "node scripts/print-panels.mjs",
+    "print:logo": "node scripts/print-logo.mjs"
   },
   "dependencies": {
     "@mediapipe/tasks-vision": "^1.1.0"
