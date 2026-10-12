@@ -90,10 +90,22 @@ const set = (out: Body, j: number, x: number, y: number, v: number) => {
 
 const get = (b: Body, j: number, k: 0 | 1 | 2): number => b[j * 3 + k] ?? 0;
 
+// Pose は映っていない脚や腰まで推測して返し、visibility も高めに付けることがある。
+// カメラの枠の外にある関節は見えていないものとして扱い、胸像なら胸像のまま描く。
+const FRAME_MARGIN = 0.02;
+const inFrame = (m: NormalizedLandmark) =>
+  m.x >= -FRAME_MARGIN &&
+  m.x <= 1 + FRAME_MARGIN &&
+  m.y >= -FRAME_MARGIN &&
+  m.y <= 1 + FRAME_MARGIN;
+
+const seenness = (m: NormalizedLandmark) =>
+  inFrame(m) ? Math.min(m.visibility ?? 1, m.presence ?? 1) : 0;
+
 export const toBody = (marks: NormalizedLandmark[], out: Body): Body => {
   for (const [name, i] of Object.entries(MP)) {
     const m = lm(marks, i);
-    set(out, J[name as JointName], m.x, m.y, m.visibility ?? 1);
+    set(out, J[name as JointName], m.x, m.y, seenness(m));
   }
   // 頭は鼻と両耳の中心。ゲームと同じく丸ひとつで描く。
   const nose = lm(marks, NOSE);
@@ -104,7 +116,7 @@ export const toBody = (marks: NormalizedLandmark[], out: Body): Body => {
     J.head,
     (nose.x + le.x + re.x) / 3,
     (nose.y + le.y + re.y) / 3,
-    Math.max(nose.visibility ?? 1, le.visibility ?? 1, re.visibility ?? 1),
+    Math.max(seenness(nose), seenness(le), seenness(re)),
   );
   set(
     out,
@@ -190,7 +202,9 @@ export const metersToPx = (b: Body, view: View, vw: number, vh: number) => {
       vh *
       view.unit,
   );
-  return Math.max(shoulder / 0.38, torso / 0.5);
+  // 腰が映っていない胸像では、推測の腰で胴の長さを測らない。
+  const hips = get(b, J.lHip, 2) >= VISIBLE && get(b, J.rHip, 2) >= VISIBLE;
+  return hips ? Math.max(shoulder / 0.38, torso / 0.5) : shoulder / 0.38;
 };
 
 export const drawBody = (
