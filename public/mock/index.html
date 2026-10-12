@@ -1,0 +1,983 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- claude.ai の Artifact (IUBEO ブース模型) と同じ中身。Artifact 側が付ける最低限のリセットだけ足している -->
+<style>body { margin: 0; } [hidden] { display: none !important; }</style>
+<title>IUBEO ブース模型</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  /* レイアウト: 画面いっぱいの白い模型、左上に図面の凡例のような操作盤を一枚だけ浮かべる */
+  :root {
+    --paper: #f3f3f0;
+    --sheet: #fbfbf9;
+    --ink: #1b1b1a;
+    --sub: #77776f;
+    --rule: #d9d9d3;
+    --warn: #a2401c;
+    --sans: "Zen Kaku Gothic New", "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+    color-scheme: light;
+  }
+  /* IUBEO の中には色がない。模型も白い世界のまま、どのテーマでも同じ見た目にする。 */
+  html, body { height: 100%; }
+  body { background: var(--paper); color: var(--ink); font-family: var(--sans); overflow: hidden; }
+  #view { position: fixed; inset: 0; display: block; width: 100%; height: 100%; touch-action: none; }
+
+  .panel {
+    position: fixed;
+    top: calc(16px + env(safe-area-inset-top, 0px));
+    left: 16px;
+    width: 296px;
+    max-height: calc(100% - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    overflow-y: auto;
+    background: color-mix(in srgb, var(--sheet) 92%, transparent);
+    backdrop-filter: blur(6px);
+    border: 1px solid var(--rule);
+    display: flex;
+    flex-direction: column;
+  }
+  .head {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+    padding: 14px 16px 12px; border-bottom: 1px solid var(--ink);
+  }
+  .head h1 { margin: 0; font-size: 15px; font-weight: 700; letter-spacing: 0.12em; }
+  .head .scale { font-family: var(--mono); font-size: 11px; color: var(--sub); }
+  .toggle-panel { display: none; }
+
+  .body { display: flex; flex-direction: column; }
+  section { padding: 12px 16px 14px; border-bottom: 1px solid var(--rule); display: flex; flex-direction: column; gap: 10px; }
+  section:last-child { border-bottom: 0; }
+  h2 { margin: 0; font-size: 11px; font-weight: 500; letter-spacing: 0.18em; color: var(--sub); }
+
+  .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; border: 1px solid var(--ink); }
+  .seg button {
+    font: 500 12px/1 var(--sans); padding: 8px 4px; background: transparent; color: var(--ink);
+    border: 0; border-left: 1px solid var(--ink); cursor: pointer;
+  }
+  .seg button:first-child { border-left: 0; }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--sheet); }
+  .seg button:focus-visible, .chip:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+  .field { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 8px; }
+  .field label { font-size: 12px; }
+  .field output { font-family: var(--mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .field input[type="range"] { grid-column: 1 / -1; width: 100%; accent-color: var(--ink); margin: 0; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { font: 12px/1 var(--sans); padding: 6px 9px; border: 1px solid var(--rule); background: var(--sheet); color: var(--sub); cursor: pointer; }
+  .chip[aria-pressed="true"] { border-color: var(--ink); color: var(--ink); }
+  .chip.off[aria-pressed="true"] { background: var(--ink); color: var(--sheet); }
+
+  dl { margin: 0; display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; font-size: 12px; }
+  dt { color: var(--sub); }
+  dd { margin: 0; font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+  .warn { margin: 0; font-size: 12px; color: var(--warn); line-height: 1.6; }
+  .note { margin: 0; font-size: 11px; color: var(--sub); line-height: 1.7; }
+  .items { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; font-size: 12px; }
+  .items span:nth-child(even) { font-family: var(--mono); color: var(--sub); text-align: right; font-variant-numeric: tabular-nums; }
+
+  @media (max-width: 720px) {
+    .panel { top: auto; left: 16px; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); width: auto; max-height: 55%; }
+    .toggle-panel {
+      display: inline-block; font: 500 12px/1 var(--sans); background: transparent;
+      border: 1px solid var(--ink); color: var(--ink); padding: 5px 8px; cursor: pointer;
+    }
+    .panel.collapsed .body { display: none; }
+  }
+</style>
+</head>
+<body>
+<canvas id="view" aria-label="IUBEO の展示ブースの 3D 模型。ドラッグで回転、ホイールやピンチで拡大縮小できる"></canvas>
+
+<aside class="panel" id="panel">
+  <div class="head">
+    <h1>IUBEO ブース模型</h1>
+    <span class="scale">単位 mm</span>
+    <button class="toggle-panel" id="togglePanel" type="button" aria-expanded="true">閉じる</button>
+  </div>
+  <div class="body">
+    <section>
+      <h2>視点</h2>
+      <div class="seg" id="views">
+        <button type="button" data-view="visitor" aria-pressed="true">来場者</button>
+        <button type="button" data-view="table" aria-pressed="false">机の上</button>
+        <button type="button" data-view="overview" aria-pressed="false">斜め上</button>
+        <button type="button" data-view="top" aria-pressed="false">真上</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>机（長方形と仮定）</h2>
+      <div class="field">
+        <label for="tables">本数</label><output id="tablesOut"></output>
+        <input type="range" id="tables" min="1" max="2" step="1" value="1">
+      </div>
+      <div class="field">
+        <label for="tableW">幅</label><output id="tableWOut"></output>
+        <input type="range" id="tableW" min="1200" max="2100" step="150" value="1800">
+      </div>
+      <div class="field">
+        <label for="tableD">奥行</label><output id="tableDOut"></output>
+        <input type="range" id="tableD" min="450" max="900" step="150" value="600">
+      </div>
+    </section>
+
+    <section>
+      <h2>ブースの区画</h2>
+      <div class="field">
+        <label for="boothW">間口</label><output id="boothWOut"></output>
+        <input type="range" id="boothW" min="1800" max="5000" step="100" value="2500">
+      </div>
+      <div class="field">
+        <label for="boothD">奥行</label><output id="boothDOut"></output>
+        <input type="range" id="boothD" min="1500" max="3500" step="100" value="2200">
+      </div>
+    </section>
+
+    <section>
+      <h2>ロゴの置き方</h2>
+      <div class="seg" data-place="logo">
+        <button type="button" data-at="front" aria-pressed="true">クロスの前に貼る</button>
+        <button type="button" data-at="back" aria-pressed="false">机の奥に立てる</button>
+      </div>
+      <h2>ファイルのパネルの置き方</h2>
+      <div class="seg" data-place="files">
+        <button type="button" data-at="front" aria-pressed="false">クロスの前に貼る</button>
+        <button type="button" data-at="back" aria-pressed="true">机の奥に立てる</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>置くもの</h2>
+      <div class="chips" id="items">
+        <button type="button" class="chip" data-item="logo" aria-pressed="true">ロゴ（A3）</button>
+        <button type="button" class="chip" data-item="files" aria-pressed="true">ファイルのパネル（A4）</button>
+        <button type="button" class="chip" data-item="observer" aria-pressed="true">観測モニター</button>
+        <button type="button" class="chip" data-item="spectator" aria-pressed="false">観戦モニター</button>
+        <button type="button" class="chip" data-item="headsets" aria-pressed="true">ヘッドセット</button>
+        <button type="button" class="chip" data-item="stools" aria-pressed="true">椅子</button>
+        <button type="button" class="chip" data-item="led" aria-pressed="true">LED テープ</button>
+        <button type="button" class="chip" data-item="people" aria-pressed="true">人</button>
+      </div>
+      <ul class="items" id="itemList"></ul>
+    </section>
+
+    <section>
+      <h2>脱落の演出（席のライトを消す）</h2>
+      <div class="chips" id="drops">
+        <button type="button" class="chip off" data-seat="0" aria-pressed="false">席 1</button>
+        <button type="button" class="chip off" data-seat="1" aria-pressed="false">席 2</button>
+        <button type="button" class="chip off" data-seat="2" aria-pressed="false">席 3</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>寸法</h2>
+      <dl id="stats"></dl>
+      <p class="warn" id="warn" hidden></p>
+    </section>
+  </div>
+</aside>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from "three";
+import {OrbitControls} from "three/addons/controls/OrbitControls.js";
+
+// ---- 状態 -------------------------------------------------------------
+const state = {
+  tables: 1,
+  tableW: 1.8,
+  tableD: 0.6,
+  boothW: 2.5,
+  boothD: 2.2,
+  // ロゴは通路から見えるようクロスの前面に、パネルとモニターは机の奥に
+  place: {logo: "front", files: "back"},
+  items: {logo: true, files: true, observer: true, spectator: false, headsets: true, stools: true, led: true, people: true},
+  dropped: [false, false, false],
+};
+
+// 寸法 (m)。ロゴとパネルは入稿データ (iubeo-booth/print) の仕上がり寸法
+const TABLE_H = 0.7;
+const CLOTH_TOP = TABLE_H + 0.035;
+const CHAIR_GAP = 0.45;      // 机の縁から椅子の中心まで
+const SEAT_ROOM = 0.75;      // 机の縁から、座った人の背中側に要る奥行
+const STAFF_ROOM = 0.6;      // 机の奥に、説明する人が立つ奥行
+const SIZES = {
+  laptop: [0.32, 0.22],
+  monitor: [0.345, 0.194],   // 15.6 インチのモバイルモニター
+  logo: [0.39, 0.143],       // A3 に刷ったロゴを、余白 20 mm 付きで切ったカード
+  search: [0.218, 0.178],    // A4 版のファイルのパネル
+  image: [0.216, 0.176],
+  write: [0.176, 0.216],
+};
+const ITEM_NAMES = {
+  monitor: "15.6″ モニター",
+  logo: "ロゴのカード",
+  search: "Web Search のパネル",
+  image: "画像生成のパネル",
+  write: "Write のパネル",
+};
+
+// ---- レンダラーと場 ---------------------------------------------------
+const canvas = document.getElementById("view");
+const renderer = new THREE.WebGLRenderer({canvas, antialias: true});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color("#f3f3f0");
+scene.fog = new THREE.Fog("#f3f3f0", 8, 20);
+
+const camera = new THREE.PerspectiveCamera(42, 1, 0.05, 80);
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+controls.maxPolarAngle = Math.PI * 0.495;
+controls.minDistance = 0.6;
+controls.maxDistance = 12;
+
+scene.add(new THREE.HemisphereLight("#ffffff", "#d8d8d2", 1.9));
+const sun = new THREE.DirectionalLight("#ffffff", 1.4);
+sun.position.set(2.5, 5.5, 4);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, {left: -4, right: 4, top: 4, bottom: -4, near: 1, far: 16});
+sun.shadow.bias = -0.0004;
+sun.shadow.radius = 4;
+scene.add(sun);
+
+const venue = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), new THREE.MeshLambertMaterial({color: "#e9e9e5"}));
+venue.rotation.x = -Math.PI / 2;
+venue.receiveShadow = true;
+scene.add(venue);
+const grid = new THREE.GridHelper(60, 120, "#d6d6d0", "#dfdfda");
+grid.position.y = 0.001;
+scene.add(grid);
+
+// ---- 材質 ------------------------------------------------------------
+const M = {
+  white: new THREE.MeshLambertMaterial({color: "#fbfbf9"}),
+  cloth: new THREE.MeshLambertMaterial({color: "#ffffff"}),
+  boothFloor: new THREE.MeshLambertMaterial({color: "#f8f8f6"}),
+  dark: new THREE.MeshLambertMaterial({color: "#2a2a28"}),
+  grey: new THREE.MeshLambertMaterial({color: "#bdbdb6"}),
+  ledOn: new THREE.MeshBasicMaterial({color: "#ffffff"}),
+  ledOff: new THREE.MeshLambertMaterial({color: "#8c8c86"}),
+  outline: new THREE.MeshBasicMaterial({color: "#1a1a1a", side: THREE.BackSide}),
+  edge: new THREE.LineBasicMaterial({color: "#1d1d1b", transparent: true, opacity: 0.5}),
+  bound: new THREE.LineDashedMaterial({color: "#1d1d1b", dashSize: 0.12, gapSize: 0.08}),
+};
+
+// ---- 画面やパネルに貼る絵 (canvas テクスチャ) -------------------------
+const texCache = new Map();
+const canvasTex = (key, w, h, draw) => {
+  if (texCache.has(key)) return texCache.get(key);
+  const c = document.createElement("canvas");
+  c.width = w; c.height = h;
+  draw(c.getContext("2d"), w, h);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
+  texCache.set(key, t);
+  return t;
+};
+
+const INK = "#1a1a1a";
+
+// ゲームのプレイヤーと同じ、白い関節と黒い縁の棒人間
+const drawFigure = (g, x, y, s) => {
+  const P = {
+    head: [0, -1.55], neck: [0, -1.35], ls: [-0.2, -1.35], rs: [0.2, -1.35],
+    le: [-0.27, -1.05], re: [0.3, -1.08], lw: [-0.3, -0.78], rw: [0.42, -0.85],
+    lh: [-0.12, -0.85], rh: [0.12, -0.85], lk: [-0.15, -0.45], rk: [0.16, -0.45],
+    la: [-0.17, -0.05], ra: [0.2, -0.05],
+  };
+  const bones = [["head","neck"],["ls","rs"],["lh","rh"],["ls","lh"],["rs","rh"],["ls","le"],["le","lw"],["rs","re"],["re","rw"],["lh","lk"],["lk","la"],["rh","rk"],["rk","ra"]];
+  const pt = (k) => [x + P[k][0] * s, y + P[k][1] * s];
+  for (const [col, grow] of [[INK, 0.012], ["#ffffff", 0]]) {
+    g.strokeStyle = col; g.fillStyle = col; g.lineCap = "round";
+    g.lineWidth = (0.03 + grow * 2) * s;
+    g.beginPath();
+    for (const [a, b] of bones) { const [ax, ay] = pt(a); const [bx, by] = pt(b); g.moveTo(ax, ay); g.lineTo(bx, by); }
+    g.stroke();
+    for (const k of Object.keys(P)) {
+      if (k === "neck") continue;
+      const [px, py] = pt(k);
+      g.beginPath();
+      g.arc(px, py, (k === "head" ? 0.11 : 0.03) * s + grow * s, 0, Math.PI * 2);
+      g.fill();
+    }
+  }
+};
+
+// IUBEO のロゴ (docs/assets/iubeo_logo.svg)。文字ごとに縦だけ半分に縮める変形と、それで縮む線幅も再現する
+const LOGO_STROKE = 109.36;
+const compose = (o, i) => [o[0] * i[0], o[3] * i[3], o[0] * i[4] + o[4], o[3] * i[5] + o[5]];
+const LOGO_E = compose([1.001262, 0, 0, 1.001262, -0.781958, -2.523829], [0.962382, 0, 0, 0.481911, 179.648169, 1037.383312]);
+const LOGO_B = compose([1.001262, 0, 0, 1.001262, -58.855149, -2.523829], [0.962382, 0, 0, 0.481911, -39.293751, 1037.383312]);
+const LOGO = [
+  [[0.963597, 0.482519, -251.15293, 1036.168572], [[492, 326], [492, 3669]]],
+  [[0.963597, 0.482519, 267.261992, 1036.168572], [[492, 326], [492, 3669], [1347.009, 2813.991], [1347.009, 1616]]],
+  [LOGO_B, [[2107, 326], [2107, 2785]]],
+  [LOGO_B, [[2107, 326], [3000, 326], [2107, 1555.5], [3000, 1555.5], [2107, 3669]]],
+  [LOGO_E, [[2326, 3669], [4005, 3669], [4005, 326], [3365, 326]]],
+  [LOGO_E, [[4005, 1997.5], [3000, 2000]]],
+  [[0.963597, -0.482519, 344.306327, 2963.831428], [[4311, 326], [4339, 3669], [5638, 3669], [4580, 769]]],
+];
+const LOGO_BOX = {x0: 170.5, y0: 1166.4, x1: 5830.0, y1: 2833.7};
+const drawLogo = (g, cx, cy, width) => {
+  const s = width / (LOGO_BOX.x1 - LOGO_BOX.x0);
+  const ox = cx - ((LOGO_BOX.x0 + LOGO_BOX.x1) / 2) * s;
+  const oy = cy - ((LOGO_BOX.y0 + LOGO_BOX.y1) / 2) * s;
+  g.strokeStyle = "#0d0d0d"; g.lineCap = "square"; g.lineJoin = "round";
+  for (const [[a, d, e, f], pts] of LOGO) {
+    g.save();
+    g.setTransform(s * a, 0, 0, s * d, ox + s * e, oy + s * f);
+    g.lineWidth = LOGO_STROKE;
+    g.beginPath();
+    pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
+    g.stroke();
+    g.restore();
+  }
+};
+
+const logoTex = () => canvasTex("logo-card", 1560, 572, (g, w, h) => {
+  g.fillStyle = "#ffffff"; g.fillRect(0, 0, w, h);
+  drawLogo(g, w / 2, h / 2, w * (350 / 390));
+});
+
+// ゲーム内ファイルの 2D 図 (frontend/src/items/fileModel)。白は見える所だけに敷く
+const FILE_SPECS = {
+  search: {w: 0.1, h: 0.08, outline: 0.0045},
+  image: {w: 0.1, h: 0.08, outline: 0.004},
+  write: {w: 0.08, h: 0.1, outline: 0.004},
+};
+const fileTex = (kind) => canvasTex(`file:${kind}`, 1024, 1024, (g, cw, ch) => {
+  const spec = FILE_SPECS[kind];
+  const fullW = spec.w + spec.outline * 2;
+  const fullH = spec.h + spec.outline * 2;
+  const k = Math.min(cw / fullW, ch / fullH);
+  g.canvas.width = Math.round(fullW * k);
+  g.canvas.height = Math.round(fullH * k);
+  const X = (x) => (x + fullW / 2) * k;
+  const Y = (y) => (fullH / 2 - y) * k;
+  const rect = (cx, cy, w, h, color) => { g.fillStyle = color; g.fillRect(X(cx - w / 2), Y(cy + h / 2), w * k, h * k); };
+  const circle = (cx, cy, r, color) => { g.fillStyle = color; g.beginPath(); g.arc(X(cx), Y(cy), r * k, 0, Math.PI * 2); g.fill(); };
+  rect(0, 0, fullW, fullH, INK);
+  if (kind === "search") {
+    const titleH = 0.016, titleY = (spec.h - titleH) / 2, bodyH = spec.h - titleH;
+    rect(0, -spec.h / 2 + bodyH / 2, spec.w, bodyH, "#ffffff");
+    for (let i = 0; i < 3; i++) circle(-spec.w / 2 + 0.01 + i * 0.009, titleY, 0.0032, "#ffffff");
+    const fw = 0.072, fh = 0.022, fy = 0.008, border = 0.003;
+    rect(0, fy, fw, fh, INK);
+    rect(0, fy, fw - border * 2, fh - border * 2, "#ffffff");
+    const lx = fw / 2 - 0.014, ly = fy + 0.0015;
+    circle(lx, ly, 0.0052, INK);
+    circle(lx, ly, 0.003, "#ffffff");
+    g.save(); g.translate(X(lx + 0.0042), Y(ly - 0.0042)); g.rotate(Math.PI / 4);
+    g.fillStyle = INK; g.fillRect(-0.0025 * k, -0.0008 * k, 0.005 * k, 0.0016 * k); g.restore();
+    rect(-0.004, -0.012, 0.064, 0.005, INK);
+    rect(-0.01, -0.022, 0.052, 0.005, INK);
+  }
+  if (kind === "image") {
+    const bar = 0.012, inner = spec.h - bar * 2;
+    rect(0, 0, spec.w - bar * 2, inner, "#ffffff");
+    const mountain = (x, w, h) => {
+      const base = -inner / 2 - 0.004;
+      g.fillStyle = INK; g.beginPath();
+      g.moveTo(X(x - w / 2), Y(base)); g.lineTo(X(x + w / 2), Y(base)); g.lineTo(X(x), Y(base + h));
+      g.closePath(); g.fill();
+    };
+    mountain(-0.014, 0.036, 0.03);
+    mountain(0.021, 0.024, 0.02);
+    circle(0.024, 0.012, 0.01, INK);
+  }
+  if (kind === "write") {
+    rect(0, 0, spec.w, spec.h, "#ffffff");
+    for (const [y, w] of [[0.03, 0.06], [0.015, 0.052], [0, 0.06], [-0.015, 0.044], [-0.03, 0.03]]) {
+      rect(-0.03 + w / 2, y, w, 0.006, INK);
+    }
+  }
+});
+
+const observerTex = () => canvasTex("observer", 1024, 576, (g, w, h) => {
+  g.fillStyle = "#f6f6f4"; g.fillRect(0, 0, w, h);
+  drawLogo(g, 120, 50, 160);
+  drawFigure(g, w * 0.38, h * 0.95, 290);
+  drawFigure(g, w * 0.68, h * 0.98, 250);
+});
+
+const gameTex = (dark) => canvasTex(dark ? "game-dark" : "game", 640, 400, (g, w, h) => {
+  if (dark) { g.fillStyle = "#3a3a37"; g.fillRect(0, 0, w, h); return; }
+  // ゲーム画面の見立て: 真っ白な部屋と、手前の PC
+  g.fillStyle = "#fafaf8"; g.fillRect(0, 0, w, h);
+  g.strokeStyle = "#c9c9c3"; g.lineWidth = 2;
+  g.beginPath();
+  g.moveTo(0, h * 0.62); g.lineTo(w * 0.3, h * 0.42); g.lineTo(w * 0.7, h * 0.42); g.lineTo(w, h * 0.62);
+  g.moveTo(w * 0.3, h * 0.42); g.lineTo(w * 0.3, 0); g.moveTo(w * 0.7, h * 0.42); g.lineTo(w * 0.7, 0);
+  g.stroke();
+  g.fillStyle = "#e7e7e2"; g.fillRect(w * 0.44, h * 0.18, w * 0.12, h * 0.3);
+  g.strokeStyle = INK; g.strokeRect(w * 0.44, h * 0.18, w * 0.12, h * 0.3);
+  g.fillStyle = INK; g.fillRect(w * 0.06, h * 0.07, w * 0.22, 6); g.fillRect(w * 0.06, h * 0.07 + 14, w * 0.15, 6);
+});
+
+const spectatorTex = () => canvasTex("spectator", 1024, 576, (g, w, h) => {
+  g.fillStyle = "#ebebe7"; g.fillRect(0, 0, w, h);
+  const src = gameTex(false).image;
+  const pw = (w - 48) / 3;
+  for (let i = 0; i < 3; i++) {
+    g.drawImage(src, 12 + i * (pw + 12), 150, pw, pw * 0.625);
+    g.strokeStyle = INK; g.lineWidth = 2; g.strokeRect(12 + i * (pw + 12), 150, pw, pw * 0.625);
+  }
+  drawLogo(g, 120, 60, 170);
+});
+
+const textTex = (text, {size = 64, weight = 500, color = "#6f6f68", mono = false} = {}) =>
+  canvasTex(`t:${text}:${size}:${weight}:${color}:${mono}`, 1024, 128, (g, w, h) => {
+    g.fillStyle = color;
+    g.font = `${weight} ${size}px ${mono ? '"IBM Plex Mono", monospace' : '"Zen Kaku Gothic New", sans-serif'}`;
+    g.textAlign = "center"; g.textBaseline = "middle";
+    g.fillText(text, w / 2, h / 2);
+  });
+
+const floorText = (group, text, x, z, w, rotY = 0, opts) => {
+  const m = new THREE.Mesh(
+    new THREE.PlaneGeometry(w, w / 8),
+    new THREE.MeshBasicMaterial({map: textTex(text, opts), transparent: true, depthWrite: false}),
+  );
+  m.rotation.x = -Math.PI / 2;
+  m.rotation.z = rotY;
+  m.position.set(x, 0.004, z);
+  group.add(m);
+};
+
+// ---- 部品 ------------------------------------------------------------
+const withEdges = (mesh, angle = 25) => {
+  mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry, angle), M.edge));
+  return mesh;
+};
+const box = (w, h, d, mat = M.white, edges = true) => {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  m.castShadow = true; m.receiveShadow = true;
+  return edges ? withEdges(m) : m;
+};
+
+// 床まで届く白いクロスを掛けた机
+const table = (w, d) => {
+  const g = new THREE.Group();
+  const cloth = box(w + 0.04, CLOTH_TOP, d + 0.04, M.cloth);
+  cloth.position.y = CLOTH_TOP / 2;
+  g.add(cloth);
+  return g;
+};
+
+const laptop = (dropped) => {
+  const g = new THREE.Group();
+  const base = box(0.32, 0.018, 0.22, M.grey);
+  base.position.y = 0.009;
+  g.add(base);
+  const lid = new THREE.Group();
+  lid.position.set(0, 0.018, -0.11);
+  lid.rotation.x = -0.32;
+  const back = box(0.32, 0.21, 0.008, M.grey);
+  back.position.y = 0.105;
+  lid.add(back);
+  const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.29, 0.18), new THREE.MeshBasicMaterial({map: gameTex(dropped)}));
+  screen.position.set(0, 0.11, 0.0045);
+  lid.add(screen);
+  g.add(lid);
+  return g;
+};
+
+const headset = () => {
+  const g = new THREE.Group();
+  const band = new THREE.Mesh(new THREE.TorusGeometry(0.08, 0.008, 8, 24, Math.PI), M.dark);
+  band.rotation.x = -Math.PI / 2;
+  band.position.y = 0.03;
+  g.add(band);
+  for (const s of [-1, 1]) {
+    const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.03, 20), M.dark);
+    cup.position.set(s * 0.08, 0.018, 0);
+    g.add(cup);
+  }
+  g.traverse((o) => { o.castShadow = true; });
+  return g;
+};
+
+// 折りたたみ椅子の代わりの丸椅子
+const stool = () => {
+  const g = new THREE.Group();
+  const seat = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.04, 28), M.white);
+  seat.position.y = 0.45;
+  g.add(withEdges(seat, 40));
+  const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.43, 12), M.grey);
+  leg.position.y = 0.215;
+  g.add(leg);
+  const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.015, 28), M.grey);
+  foot.position.y = 0.008;
+  g.add(foot);
+  g.traverse((o) => { o.castShadow = true; o.receiveShadow = true; });
+  return g;
+};
+
+// ゲーム本体と同じ比率の骨格。頭 0.11m、関節 0.03m
+const SKELETON = {head: 0.11, joint: 0.032, bone: 0.02, outline: 0.009};
+const sphereGeo = new THREE.SphereGeometry(1, 20, 14);
+const cylGeo = new THREE.CylinderGeometry(1, 1, 1, 10);
+cylGeo.translate(0, 0.5, 0);
+const up = new THREE.Vector3(0, 1, 0);
+const skeleton = (J) => {
+  const g = new THREE.Group();
+  const bones = [["head","neck"],["ls","rs"],["lh","rh"],["ls","lh"],["rs","rh"],["ls","le"],["le","lw"],["rs","re"],["re","rw"],["lh","lk"],["lk","la"],["la","lt"],["rh","rk"],["rk","ra"],["ra","rt"]];
+  const V = Object.fromEntries(Object.entries(J).map(([k, v]) => [k, new THREE.Vector3(...v)]));
+  V.neck = V.ls.clone().add(V.rs).multiplyScalar(0.5);
+  for (const [mat, grow] of [[M.outline, SKELETON.outline], [M.white, 0]]) {
+    for (const [k, p] of Object.entries(V)) {
+      if (k === "neck") continue;
+      const s = new THREE.Mesh(sphereGeo, mat);
+      s.scale.setScalar((k === "head" ? SKELETON.head : SKELETON.joint) + grow);
+      s.position.copy(p);
+      s.castShadow = mat !== M.outline;
+      g.add(s);
+    }
+    for (const [a, b] of bones) {
+      const dir = V[b].clone().sub(V[a]);
+      const c = new THREE.Mesh(cylGeo, mat);
+      c.scale.set(SKELETON.bone + grow, dir.length(), SKELETON.bone + grow);
+      c.position.copy(V[a]);
+      c.quaternion.setFromUnitVectors(up, dir.normalize());
+      c.castShadow = mat !== M.outline;
+      g.add(c);
+    }
+  }
+  return g;
+};
+
+// 座ってノート PC を触る人 (ローカル座標: 机は -z 側、机の縁が z=0)
+const seatedPose = () => ({
+  head: [0, 1.21, 0.42],
+  ls: [-0.19, 0.99, 0.45], rs: [0.19, 0.99, 0.45],
+  le: [-0.23, 0.8, 0.3], re: [0.23, 0.8, 0.3],
+  lw: [-0.12, 0.78, -0.06], rw: [0.12, 0.78, -0.06],
+  lh: [-0.11, 0.5, 0.47], rh: [0.11, 0.5, 0.47],
+  lk: [-0.13, 0.52, 0.06], rk: [0.13, 0.52, 0.06],
+  la: [-0.13, 0.06, 0.1], ra: [0.13, 0.06, 0.1],
+  lt: [-0.13, 0.02, 0.0], rt: [0.13, 0.02, 0.0],
+});
+// 立っている人 (ローカル座標: -z を向く)
+const standingPose = (lean = 0) => ({
+  head: [0, 1.6, -0.05 - lean],
+  ls: [-0.19, 1.4, 0], rs: [0.19, 1.4, 0],
+  le: [-0.24, 1.12, 0.03], re: [0.24, 1.12, 0.03],
+  lw: [-0.25, 0.86, 0.02], rw: [0.25, 0.86, 0.02],
+  lh: [-0.11, 0.92, 0], rh: [0.11, 0.92, 0],
+  lk: [-0.12, 0.5, -0.02], rk: [0.12, 0.5, 0.02],
+  la: [-0.12, 0.08, 0], ra: [0.12, 0.08, 0.05],
+  lt: [-0.12, 0.02, -0.12], rt: [0.12, 0.02, -0.07],
+});
+
+// 机の手前の縁に向かって座る 1 席 (x は席の中心、z は机の手前の縁)
+const seat = (index, x, z) => {
+  const g = new THREE.Group();
+  g.position.set(x, 0, z);
+  const dropped = state.dropped[index];
+  const lap = laptop(dropped);
+  lap.position.set(0, CLOTH_TOP, -0.17);
+  g.add(lap);
+  if (state.items.headsets) {
+    const hs = headset();
+    hs.position.set(0.25, CLOTH_TOP, -0.12);
+    hs.rotation.y = 0.4;
+    g.add(hs);
+  }
+  if (state.items.led) {
+    // 席ごとの LED テープ。クロスの前面、天板のすぐ下に貼る想定
+    const led = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.012, 0.004), dropped ? M.ledOff : M.ledOn);
+    led.position.set(0, TABLE_H - 0.03, 0.023);
+    g.add(led);
+    if (!dropped) {
+      const glow = new THREE.PointLight("#ffffff", 0.3, 0.8, 2);
+      glow.position.set(0, TABLE_H - 0.1, 0.12);
+      g.add(glow);
+    }
+  }
+  if (state.items.stools) {
+    const st = stool();
+    st.position.set(0, 0, CHAIR_GAP);
+    g.add(st);
+  }
+  if (state.items.people && !dropped) {
+    if (state.items.stools) {
+      g.add(skeleton(seatedPose()));
+    } else {
+      const p = skeleton(standingPose(0.06));
+      p.position.z = 0.3;
+      g.add(p);
+    }
+  }
+  const label = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.36, 0.045),
+    new THREE.MeshBasicMaterial({map: textTex(`席 ${index + 1}`, {size: 72}), transparent: true, depthWrite: false}),
+  );
+  label.rotation.x = -Math.PI / 2;
+  label.position.set(0, 0.004, CHAIR_GAP + 0.32);
+  g.add(label);
+  return g;
+};
+
+// 卓上に立てる板 (ロゴのカード、ファイルのパネル)。正面は +z、下端が y=0。
+// 机の高さに直に立てるとノート PC の画面に隠れるので、卓上イーゼルの受け棚で LIFT だけ持ち上げる
+const STAND_LIFT = 0.12;
+const standBoard = (w, h, tex) => {
+  const g = new THREE.Group();
+  const lean = 0.12;
+  const inner = new THREE.Group();
+  inner.position.y = STAND_LIFT;
+  inner.rotation.x = -lean;
+  const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.005), M.white);
+  body.position.y = h / 2;
+  body.castShadow = true;
+  inner.add(withEdges(body));
+  const face = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshLambertMaterial({map: tex}));
+  face.position.set(0, h / 2, 0.0026);
+  inner.add(face);
+  g.add(inner);
+  // イーゼル: 板を載せる受け棚と、前の 2 本脚、後ろの 1 本脚
+  const ledge = box(Math.min(w, 0.2), 0.008, 0.025, M.grey, false);
+  ledge.position.set(0, STAND_LIFT - 0.004, 0.012);
+  g.add(ledge);
+  const top = STAND_LIFT + h * 0.85;
+  for (const sx of [-1, 1]) {
+    const leg = box(0.012, top, 0.008, M.grey, false);
+    leg.position.set(sx * Math.min(w, 0.2) * 0.4, top / 2, -top * 0.06);
+    leg.rotation.x = -lean;
+    g.add(leg);
+  }
+  const back = box(0.012, top * 0.95, 0.008, M.grey, false);
+  back.position.set(0, top * 0.45, -0.09);
+  back.rotation.x = 0.28;
+  g.add(back);
+  return g;
+};
+
+// クロスの前面に貼る板。正面は +z、中心が原点
+const flatBoard = (w, h, tex) => {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.005), M.white);
+  g.add(withEdges(body));
+  const face = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshLambertMaterial({map: tex}));
+  face.position.z = 0.0026;
+  g.add(face);
+  return g;
+};
+
+// 15.6 インチのモバイルモニター。折りたたみスタンドで机に置く。正面は +z、下端が y=0
+const monitor = (tex, {camera: cam = false} = {}) => {
+  const [w, h] = SIZES.monitor;
+  const g = new THREE.Group();
+  const lift = 0.03;
+  const frame = box(w + 0.012, h + 0.012, 0.012, M.dark);
+  frame.position.y = lift + h / 2;
+  frame.rotation.x = -0.1;
+  g.add(frame);
+  const screen = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({map: tex}));
+  screen.position.set(0, lift + h / 2, 0.0065);
+  screen.rotation.x = -0.1;
+  g.add(screen);
+  const foot = box(w * 0.6, 0.01, 0.12, M.grey);
+  foot.position.set(0, 0.005, -0.04);
+  g.add(foot);
+  const prop = box(w * 0.4, lift + 0.02, 0.01, M.grey, false);
+  prop.position.set(0, (lift + 0.02) / 2, -0.02);
+  g.add(prop);
+  if (cam) {
+    const webcam = box(0.08, 0.025, 0.03, M.dark, false);
+    webcam.position.set(0, lift + h + 0.022, -0.005);
+    g.add(webcam);
+  }
+  return g;
+};
+
+// ---- 配置 ------------------------------------------------------------
+let booth = new THREE.Group();
+scene.add(booth);
+
+const dispose = (obj) => {
+  obj.traverse((o) => {
+    if (o.geometry && o.geometry !== sphereGeo && o.geometry !== cylGeo) o.geometry.dispose();
+    if (o.material && !Object.values(M).includes(o.material)) o.material.dispose();
+  });
+};
+
+const build = () => {
+  scene.remove(booth);
+  dispose(booth);
+  booth = new THREE.Group();
+  scene.add(booth);
+
+  const {boothW: BW, boothD: BD, tableW: w, tableD: d, tables: n, items} = state;
+  const front = BD / 2;   // 通路側 (+z)
+  const back = -BD / 2;
+  const L = n * w;
+
+  // 区画の床と境界線
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(BW, BD), M.boothFloor);
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = 0.002;
+  floor.receiveShadow = true;
+  booth.add(floor);
+  const outline = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints([
+      [-BW / 2, back], [BW / 2, back], [BW / 2, front], [-BW / 2, front], [-BW / 2, back],
+    ].map(([x, z]) => new THREE.Vector3(x, 0.003, z))),
+    M.bound,
+  );
+  outline.computeLineDistances();
+  booth.add(outline);
+  floorText(booth, `間口 ${Math.round(BW * 1000)}`, 0, front + 0.16, 1.6, 0, {size: 56, mono: true});
+  floorText(booth, `奥行 ${Math.round(BD * 1000)}`, -BW / 2 - 0.18, 0, 1.6, Math.PI / 2, {size: 56, mono: true});
+  floorText(booth, "通　路", 0, front + 1.0, 2.6, 0, {size: 64, color: "#a3a39b"});
+
+  // 机は区画の奥に寄せ、後ろに説明する人が立つ場所を残す
+  const tz = back + STAFF_ROOM + d / 2;
+  const tableFront = tz + d / 2;
+  const tableBack = tz - d / 2;
+  for (let i = 0; i < n; i++) {
+    const t = table(w, d);
+    t.position.set(-L / 2 + w * (i + 0.5), 0, tz);
+    booth.add(t);
+  }
+
+  // 手前の列: プレイヤー 3 人。通路に背を向けて座り、後ろを通る人に画面が見える
+  for (let i = 0; i < 3; i++) booth.add(seat(i, -L / 2 + L * (i + 0.5) / 3, tableFront + 0.02));
+
+  // 置く物を、クロスの前に貼る物と机の奥に立てる物に分ける
+  const front_ = [];
+  const back_ = [];
+  const put = (kind, keys) => (state.place[kind] === "front" ? front_ : back_).push(...keys);
+  if (items.files) put("files", ["search"]);
+  if (items.logo) put("logo", ["logo"]);
+  if (items.files) put("files", ["image", "write"]);
+
+  // 奥の列: 観測モニターを左端、観戦モニターを右端にして、間に掲示物を左から順に並べる
+  const row = [];
+  if (items.observer) row.push("observer");
+  row.push(...back_);
+  if (items.spectator) row.push("spectator");
+  const sizeOf = (k) => SIZES[k === "observer" || k === "spectator" ? "monitor" : k];
+  const GAP = 0.05;
+  const rowW = row.reduce((a, k) => a + sizeOf(k)[0], 0) + GAP * Math.max(0, row.length - 1);
+  let x = -rowW / 2;
+  for (const k of row) {
+    const [iw, ih] = sizeOf(k);
+    let obj;
+    if (k === "observer") obj = monitor(observerTex(), {camera: true});
+    else if (k === "spectator") obj = monitor(spectatorTex());
+    else obj = standBoard(iw, ih, k === "logo" ? logoTex() : fileTex(k));
+    obj.position.set(x + iw / 2, CLOTH_TOP, tableBack + 0.12);
+    booth.add(obj);
+    x += iw + GAP;
+  }
+
+  // クロスの前面: 天板のすぐ下、席ごとの LED テープより下に並べる
+  if (front_.length) {
+    const FGAP = 0.08;
+    const total = front_.reduce((a, k) => a + SIZES[k][0], 0) + FGAP * (front_.length - 1);
+    const top = TABLE_H - 0.06;
+    let cx = -total / 2;
+    for (const k of front_) {
+      const [iw, ih] = SIZES[k];
+      const b = flatBoard(iw, ih, k === "logo" ? logoTex() : fileTex(k));
+      b.position.set(cx + iw / 2, top - ih / 2, tableFront + 0.023);
+      booth.add(b);
+      cx += iw + FGAP;
+    }
+  }
+
+  if (items.people) {
+    // 机の奥で説明する人と、通路の来場者
+    const staff = skeleton(standingPose(0.02));
+    staff.position.set(L * 0.22, 0, back + STAFF_ROOM * 0.45);
+    staff.rotation.y = Math.PI;
+    booth.add(staff);
+    // 来場者は通路の左右から覗き込む。正面の視界はふさがない
+    const v1 = skeleton(standingPose(0.05));
+    v1.position.set(-L / 2 - 0.25, 0, front + 0.35);
+    v1.rotation.y = 0.6;
+    booth.add(v1);
+    const v2 = skeleton(standingPose(0));
+    v2.position.set(L / 2 + 0.3, 0, front + 0.5);
+    v2.rotation.y = -0.7;
+    booth.add(v2);
+  }
+
+  booth.traverse((o) => { if (o.isMesh && o.material !== M.outline && !o.material.transparent) o.receiveShadow = true; });
+
+  // 数字と注意
+  const mm = (v) => Math.round(v * 1000).toLocaleString("ja-JP");
+  const seatsDepth = items.stools ? SEAT_ROOM : 0.5;
+  const needD = STAFF_ROOM + d + seatsDepth;
+  const rows = [
+    ["机の合計", `${mm(L)} × ${mm(d)}`],
+    ["1 席あたりの机幅", mm(L / 3)],
+    ["机の奥に並べる物の幅", row.length ? `${mm(rowW)} / ${mm(L)}` : "—"],
+    ["要る奥行（説明 + 机 + 席）", mm(needD)],
+  ];
+  document.getElementById("stats").innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
+  const msgs = [];
+  if (rowW > L - 0.04) msgs.push("机の奥に並べる物が机に載り切らない。机を足すか、ロゴとパネルをクロスの前に貼る。");
+  if (L > BW + 1e-6) msgs.push("机が区画の間口からはみ出している。");
+  if (needD > BD + 1e-6) msgs.push("区画の奥行が足りない。説明する人の場所か、席の場所が通路にはみ出す。");
+  if (L / 3 < 0.55) msgs.push("1 席の机幅が 550 未満。ノート PC とヘッドセットを並べると窮屈。");
+  const warn = document.getElementById("warn");
+  warn.hidden = msgs.length === 0;
+  warn.textContent = msgs.join(" ");
+
+  // 置いている物の一覧と寸法
+  const list = [];
+  if (items.logo) list.push(["ロゴのカード（A3 から切り出し）", "390 × 143"]);
+  if (items.files) {
+    list.push(["Web Search のパネル（A4）", "218 × 178"]);
+    list.push(["画像生成のパネル（A4）", "216 × 176"]);
+    list.push(["Write のパネル（A4）", "176 × 216"]);
+  }
+  const monitors = (items.observer ? 1 : 0) + (items.spectator ? 1 : 0);
+  if (monitors) list.push([`15.6″ モニター × ${monitors}`, "345 × 194"]);
+  document.getElementById("itemList").innerHTML = list.map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join("");
+};
+
+// ---- 視点 ------------------------------------------------------------
+const VIEWS = {
+  visitor: () => ({pos: [0.4, 1.7, state.boothD / 2 + 2.6], target: [0, 0.8, -0.4]}),
+  // 座っている人の頭越しに、机の奥に並べた物を見下ろす
+  table: () => {
+    const back = -state.boothD / 2 + STAFF_ROOM;
+    const front = back + state.tableD;
+    return {pos: [0.3, 1.9, front + 1.25], target: [0, CLOTH_TOP + 0.15, back + 0.1]};
+  },
+  overview: () => ({pos: [state.boothW * 0.95, 3.2, state.boothD / 2 + 3.2], target: [0, 0.6, -0.1]}),
+  top: () => ({pos: [0, Math.max(state.boothW, state.boothD) * 1.5 + 1.2, 0.01], target: [0, 0, 0]}),
+};
+let tween = null;
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const goTo = (name, instant = false) => {
+  const v = VIEWS[name]();
+  const to = {pos: new THREE.Vector3(...v.pos), target: new THREE.Vector3(...v.target)};
+  if (instant || reduceMotion) {
+    camera.position.copy(to.pos); controls.target.copy(to.target); tween = null;
+    return;
+  }
+  tween = {from: {pos: camera.position.clone(), target: controls.target.clone()}, to, t0: performance.now()};
+};
+
+// ---- 操作盤 ----------------------------------------------------------
+const pressOne = (container, btn) => {
+  for (const b of container.querySelectorAll("button")) b.setAttribute("aria-pressed", String(b === btn));
+};
+document.getElementById("views").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  pressOne(e.currentTarget, b); goTo(b.dataset.view);
+});
+for (const seg of document.querySelectorAll("[data-place]")) {
+  seg.addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    pressOne(seg, b);
+    state.place[seg.dataset.place] = b.dataset.at;
+    build();
+  });
+}
+document.getElementById("items").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  const on = b.getAttribute("aria-pressed") !== "true";
+  b.setAttribute("aria-pressed", String(on));
+  state.items[b.dataset.item] = on;
+  build();
+});
+document.getElementById("drops").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  const i = Number(b.dataset.seat);
+  state.dropped[i] = !state.dropped[i];
+  b.setAttribute("aria-pressed", String(state.dropped[i]));
+  build();
+});
+
+const mmFmt = (v) => v.toLocaleString("ja-JP");
+const sliders = {
+  tables: {fmt: (v) => `${v} 本`, set: (v) => (state.tables = v), get: () => state.tables},
+  tableW: {fmt: mmFmt, set: (v) => (state.tableW = v / 1000), get: () => state.tableW * 1000},
+  tableD: {fmt: mmFmt, set: (v) => (state.tableD = v / 1000), get: () => state.tableD * 1000},
+  boothW: {fmt: mmFmt, set: (v) => (state.boothW = v / 1000), get: () => state.boothW * 1000},
+  boothD: {fmt: mmFmt, set: (v) => (state.boothD = v / 1000), get: () => state.boothD * 1000},
+};
+for (const [id, s] of Object.entries(sliders)) {
+  const input = document.getElementById(id);
+  const out = document.getElementById(`${id}Out`);
+  input.value = Math.round(s.get());
+  out.textContent = s.fmt(Math.round(s.get()));
+  input.addEventListener("input", () => {
+    const v = Number(input.value);
+    s.set(v);
+    out.textContent = s.fmt(v);
+    build();
+  });
+}
+
+const panel = document.getElementById("panel");
+const togglePanel = document.getElementById("togglePanel");
+togglePanel.addEventListener("click", () => {
+  const collapsed = panel.classList.toggle("collapsed");
+  togglePanel.textContent = collapsed ? "開く" : "閉じる";
+  togglePanel.setAttribute("aria-expanded", String(!collapsed));
+});
+
+// ---- ループ ----------------------------------------------------------
+const resize = () => {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.fov = w < h ? 58 : 42;
+  // 広い画面では左に操作盤が浮くので、描画の中心を操作盤の右側の空きに寄せる
+  const PANEL = 328;
+  if (w > 720) camera.setViewOffset(w + PANEL, h, 0, 0, w, h);
+  else camera.clearViewOffset();
+  camera.updateProjectionMatrix();
+};
+addEventListener("resize", resize);
+
+const ease = (t) => 1 - Math.pow(1 - t, 3);
+const tick = (now) => {
+  if (tween) {
+    const t = Math.min(1, (now - tween.t0) / 700);
+    const k = ease(t);
+    camera.position.lerpVectors(tween.from.pos, tween.to.pos, k);
+    controls.target.lerpVectors(tween.from.target, tween.to.target, k);
+    if (t >= 1) tween = null;
+  }
+  controls.update();
+  renderer.render(scene, camera);
+  requestAnimationFrame(tick);
+};
+
+resize();
+build();
+goTo("visitor", true);
+// 床の文字に使う和文フォントが届いたら、テクスチャを描き直す
+document.fonts?.ready.then(() => {
+  for (const [k, t] of texCache) if (k.startsWith("t:")) { t.dispose(); texCache.delete(k); }
+  build();
+});
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>

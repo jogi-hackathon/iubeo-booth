@@ -5,6 +5,8 @@ IUBEO の展示ブースで、前を通る人を MediaPipe のランドマーク
 
 公開版: https://jogi-hackathon.github.io/iubeo-booth/ （`main` に入ると GitHub Actions で自動デプロイ）
 
+ブースの 3D 模型: https://jogi-hackathon.github.io/iubeo-booth/mock/ （`public/mock/index.html`。机・モニター・ロゴ・ファイルのパネルを実寸で並べ、置き方を変えながら回して見られる）
+
 ## 起動
 
 ```sh
