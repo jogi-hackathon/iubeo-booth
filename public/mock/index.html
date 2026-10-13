@@ -190,7 +190,7 @@
       <h2>置くもの</h2>
       <div class="chips" id="items">
         <button type="button" class="chip" data-item="cloth" aria-pressed="true">白いクロス</button>
-        <button type="button" class="chip" data-item="logo" aria-pressed="true">ロゴ（A3）</button>
+        <button type="button" class="chip" data-item="logo" aria-pressed="true">ロゴ（A3 × 3）</button>
         <button type="button" class="chip" data-item="files" aria-pressed="true">ファイル</button>
         <button type="button" class="chip" data-item="printer" aria-pressed="true">サーマルプリンタと伝票</button>
         <button type="button" class="chip" data-item="memo" aria-pressed="true">お題の三角紙</button>
@@ -1190,7 +1190,7 @@ const dispose = (obj) => {
 };
 
 const MODE_NOTES = {
-  "front-free": "通路側の辺を空け、ロゴ・iPad Pro・三角紙を通路に向ける。左奥は伝票、右奥は iPad mini と配る用のカード。3 人は残りの辺から中央を囲む。",
+  "front-free": "通路側の辺を空け、iPad Pro と三角紙を通路に向ける。ロゴは空いた 3 辺すべてに貼る。左奥は伝票、右奥は iPad mini と配る用のカード。3 人は残りの辺から中央を囲む。",
   "front-seat": "通路側の辺にも座る。通路から 1 人の画面が見える。ロゴと iPad は左手前の辺に寄せる。",
 };
 
@@ -1245,15 +1245,17 @@ const build = () => {
       }
     });
   }
+  // ロゴは空いた 3 辺に 1 枚ずつ。120° ずつ違う向きなので、どこから来た人にも見える
   if (items.logo) {
     const [w, h] = SIZES.logo;
-    if (items.cloth) {
-      // クロスの前面、天板のすぐ下に貼る
-      const b = flatBoard(w, h, logoTex());
-      booth.add(onEdge(b, show, {inward: -CLOTH_MARGIN, y: TOP - 0.05 - h / 2}));
-    } else {
-      // クロスがなければ、iPad の後ろに立てる
-      booth.add(onEdge(standBoard(w, h, logoTex()), show, {inward: 0.3, y: TOP}));
+    for (const e of free) {
+      if (items.cloth) {
+        // クロスの前面、天板のすぐ下に貼る
+        booth.add(onEdge(flatBoard(w, h, logoTex()), e, {inward: -CLOTH_MARGIN, y: TOP - 0.05 - h / 2}));
+      } else {
+        // クロスがなければ、辺の物の後ろに立てる
+        booth.add(onEdge(standBoard(w, h, logoTex()), e, {inward: 0.3, y: TOP}));
+      }
     }
   }
 
@@ -1343,7 +1345,7 @@ const build = () => {
     : `裾は床から ${cm(lo)}〜${cm(hi)} cm（辺の真ん中が低く、角が高い）。`;
 
   const list = [];
-  if (items.logo) list.push([`ロゴのカード（${items.cloth ? "クロスに貼る" : "天板に立てる"}）`, "390 × 143"]);
+  if (items.logo) list.push([`ロゴのカード × 3（${items.cloth ? "クロスに貼る" : "天板に立てる"}）`, "390 × 143"]);
   if (items.files && state.fileSize === "a4") {
     list.push(["Web Search のパネル（A4・積む）", "218 × 178"]);
     list.push(["画像生成のパネル（A4・積む）", "216 × 176"]);
