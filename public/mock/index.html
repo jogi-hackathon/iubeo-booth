@@ -172,6 +172,14 @@
     </section>
 
     <section>
+      <h2>伝票立て</h2>
+      <div class="seg" id="slipHolders">
+        <button type="button" data-holder="clip" aria-pressed="true">クリップ（ゲーム）</button>
+        <button type="button" data-holder="acrylic" aria-pressed="false">アクリル筒</button>
+      </div>
+    </section>
+
+    <section>
       <h2>お題の三角紙</h2>
       <label class="note" for="memoTopic">お題の語（チーム名など）</label>
       <input class="text-input" id="memoTopic" type="text" value="ゆーべお" maxlength="40" autocomplete="off">
@@ -228,6 +236,8 @@ const state = {
   items: {cloth: true, logo: true, files: true, printer: true, memo: true, chairs: true, people: true},
   // ファイルの大きさ。palm: ゲームの中と同じ実物大 (名刺くらい) / a4: A4 に刷ったパネル
   fileSize: "palm",
+  // 伝票立て。clip: ゲームの机にあるクリップ付きの柱 / acrylic: 上を斜めに切ったアクリルの筒
+  slipHolder: "clip",
   team: "ゆーべお",
   // 持ち込む iPad に何を映すか。observer: 観測 (前面カメラで来場者を骨格にする) / slides: 資料 / video: デモ動画 / none: 置かない
   ipads: {pro: "observer", mini: "video"},
@@ -802,6 +812,55 @@ const memoStand = () => {
   return g;
 };
 
+// 上を斜めに切ったアクリルの筒。伝票を差して、後ろの高い縁にもたれさせる。正面は +z (低い側)
+const ACRYLIC = {radius: 0.035, back: 0.1, front: 0.05, wall: 0.002};
+const acrylicMat = new THREE.MeshPhysicalMaterial({
+  color: "#d6e2ea", transparent: true, opacity: 0.42, roughness: 0.05, side: THREE.DoubleSide, depthWrite: false,
+});
+const acrylicHolder = () => {
+  const A = ACRYLIC;
+  const g = new THREE.Group();
+  const mid = (A.back + A.front) / 2;
+  const half = (A.back - A.front) / 2;
+  // 側面: 筒の上端の高さを、正面 (+z) で低く背面で高くなるよう、角度ごとに変える
+  const topY = (x, z) => mid - half * (z / A.radius);
+  const side = new THREE.CylinderGeometry(A.radius, A.radius, 1, 48, 1, true);
+  const pos = side.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const z = pos.getZ(i);
+    pos.setY(i, pos.getY(i) > 0 ? topY(x, z) : 0);
+  }
+  side.computeVertexNormals();
+  g.add(new THREE.Mesh(side, acrylicMat));
+  // 底と、斜めに切った口の縁を線で描いて、透明でも形が分かるようにする
+  const ring = (fy) => {
+    const pts = [];
+    for (let k = 0; k <= 64; k++) {
+      const a = (k / 64) * Math.PI * 2;
+      const x = Math.sin(a) * A.radius;
+      const z = Math.cos(a) * A.radius;
+      pts.push(new THREE.Vector3(x, fy(x, z), z));
+    }
+    return new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), M.edge);
+  };
+  g.add(ring(() => 0.001));
+  g.add(ring(topY));
+  // 伝票: 筒の底から差して、背面の縁にもたれる
+  const lean = Math.atan2(A.radius * 1.4, SLIP.h);
+  const slip = new THREE.Mesh(
+    new THREE.PlaneGeometry(SLIP.w, SLIP.h),
+    new THREE.MeshLambertMaterial({map: slipTex(), transparent: true, alphaTest: 0.5, side: THREE.DoubleSide}),
+  );
+  slip.geometry.translate(0, SLIP.h / 2, 0);
+  slip.position.set(0, 0.002, A.radius * 0.7);
+  slip.rotation.x = -lean;
+  g.add(slip);
+  return g;
+};
+
+const slipHolder = () => (state.slipHolder === "acrylic" ? acrylicHolder() : memoStand());
+
 // 58 mm 幅のサーマルプリンタ。上の口から刷った伝票が少し出ている。正面は +z
 const thermalPrinter = () => {
   const g = new THREE.Group();
@@ -1097,7 +1156,7 @@ scene.add(booth);
 const dispose = (obj) => {
   obj.traverse((o) => {
     if (o.geometry && o.geometry !== sphereGeo && o.geometry !== cylGeo) o.geometry.dispose();
-    if (o.material && !Object.values(M).includes(o.material)) o.material.dispose();
+    if (o.material && !Object.values(M).includes(o.material) && o.material !== acrylicMat) o.material.dispose();
   });
 };
 
@@ -1188,8 +1247,8 @@ const build = () => {
   if (items.printer) {
     const e = free[1];
     booth.add(onEdge(thermalPrinter(), e, {along: -0.14, inward: 0.15, y: TOP}));
-    booth.add(onEdge(memoStand(), e, {along: 0.06, inward: 0.12, y: TOP}));
-    booth.add(onEdge(memoStand(), e, {along: 0.16, inward: 0.16, y: TOP}));
+    booth.add(onEdge(slipHolder(), e, {along: 0.06, inward: 0.12, y: TOP}));
+    booth.add(onEdge(slipHolder(), e, {along: 0.17, inward: 0.16, y: TOP}));
   }
 
   if (items.people) {
@@ -1247,7 +1306,7 @@ const build = () => {
   }
   if (items.printer) {
     list.push(["サーマルプリンタ（58 mm）", "110 × 120"]);
-    list.push(["伝票のメモ置き × 2", "伝票 58 × 120"]);
+    list.push([state.slipHolder === "acrylic" ? "伝票立て（アクリル筒）× 2" : "伝票のメモ置き（クリップ）× 2", "伝票 58 × 120"]);
   }
   if (items.memo) list.push([`お題の三角紙${state.team ? `（${state.team}）` : ""}`, "200 × 140"]);
   const SHOW_NAMES = {observer: "観測", slides: "資料", video: "デモ動画"};
@@ -1327,6 +1386,12 @@ for (const id of ["hexSide", "clothD"]) {
   });
 }
 
+document.getElementById("slipHolders").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  pressOne(e.currentTarget, b);
+  state.slipHolder = b.dataset.holder;
+  build();
+});
 document.getElementById("fileSizes").addEventListener("click", (e) => {
   const b = e.target.closest("button"); if (!b) return;
   pressOne(e.currentTarget, b);
