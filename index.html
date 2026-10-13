@@ -2,15 +2,155 @@
 <html lang="ja">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>IUBEO Observer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>IUBEO ブース</title>
+    <meta name="description" content="JOGI HACK 2026 の IUBEO ブースで使う道具をまとめたページ" />
     <link rel="icon" href="/iubeo_logo.svg" />
+    <style>
+      /* IUBEO の白い世界のまま、罫線で区切った一覧にする */
+      :root {
+        --bg: #f3f3f0;
+        --ink: #1b1b1a;
+        --sub: #77776f;
+        --rule: #d9d9d3;
+        --sans: "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+        --mono: "Menlo", ui-monospace, monospace;
+        color-scheme: light;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: var(--sans);
+        font-size: 15px;
+        line-height: 1.7;
+      }
+      main {
+        max-width: 640px;
+        margin: 0 auto;
+        padding-block: calc(48px + env(safe-area-inset-top, 0px)) calc(48px + env(safe-area-inset-bottom, 0px));
+        padding-inline: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 40px;
+      }
+      header {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      .logo {
+        width: 180px;
+        max-width: 60%;
+        height: auto;
+      }
+      .lead {
+        margin: 0;
+        color: var(--sub);
+      }
+      h2 {
+        margin: 0 0 4px;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.2em;
+        color: var(--sub);
+      }
+      .list {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        border-top: 1px solid var(--ink);
+      }
+      .list a {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 4px 16px;
+        padding: 16px 0;
+        border-bottom: 1px solid var(--rule);
+        color: inherit;
+        text-decoration: none;
+      }
+      .list a:hover .name,
+      .list a:focus-visible .name {
+        text-decoration: underline;
+        text-underline-offset: 4px;
+      }
+      .list a:focus-visible {
+        outline: 2px solid var(--ink);
+        outline-offset: 2px;
+      }
+      .name {
+        font-size: 17px;
+        font-weight: 700;
+      }
+      .path {
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--sub);
+        align-self: center;
+      }
+      .desc {
+        grid-column: 1 / -1;
+        margin: 0;
+        color: var(--sub);
+        font-size: 13px;
+      }
+      footer {
+        font-size: 12px;
+        color: var(--sub);
+      }
+      footer a {
+        color: inherit;
+      }
+    </style>
   </head>
   <body>
-    <video id="camera" playsinline muted></video>
-    <canvas id="stage"></canvas>
-    <img class="logo" src="/iubeo_logo.svg" alt="IUBEO" />
-    <div id="debug" class="debug"></div>
-    <script type="module" src="/src/main.ts"></script>
+    <main>
+      <header>
+        <img class="logo" src="/iubeo_logo.svg" alt="IUBEO" />
+        <p class="lead">JOGI HACK 2026 最終発表会（10/17）の IUBEO ブースで使う道具。</p>
+      </header>
+
+      <section aria-labelledby="tools">
+        <h2 id="tools">道具</h2>
+        <ul class="list">
+          <li>
+            <a href="observer/">
+              <span class="name">観測</span>
+              <span class="path">/observer/</span>
+              <p class="desc">カメラに映った人を、ゲームのプレイヤーと同じ白い骨格だけで映す。iPad Pro に出す。カメラを使うので、許可を求められたら許可する。</p>
+            </a>
+          </li>
+          <li>
+            <a href="slip/">
+              <span class="name">伝票メーカー</span>
+              <span class="path">/slip/</span>
+              <p class="desc">ゲームの依頼伝票と同じ見た目で中身を書き換え、PNG か PDF にする。スマホで開いて Phomemo T02 で刷る。</p>
+            </a>
+          </li>
+          <li>
+            <a href="mock/index.html">
+              <span class="name">ブース模型</span>
+              <span class="path">/mock/</span>
+              <p class="desc">六角形の机に、プレイヤー・iPad・ロゴ・ファイルのカード・伝票差しを実寸で置いた 3D 模型。置き方を変えながら回して見られる。</p>
+            </a>
+          </li>
+          <li>
+            <a href="https://github.com/jogi-hackathon/iubeo-booth/tree/main/print">
+              <span class="name">印刷データ</span>
+              <span class="path">GitHub</span>
+              <p class="desc">ロゴ（A3）、ファイルのカードとパネル、お題の三角紙。白黒・100%（実際のサイズ）で刷る。刷り方は README にある。</p>
+            </a>
+          </li>
+        </ul>
+      </section>
+
+      <footer>
+        <a href="https://github.com/jogi-hackathon/iubeo-booth">jogi-hackathon/iubeo-booth</a>
+      </footer>
+    </main>
   </body>
 </html>
