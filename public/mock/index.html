@@ -111,7 +111,17 @@
         <button type="button" data-view="table" aria-pressed="false">机の上</button>
         <button type="button" data-view="overview" aria-pressed="false">斜め上</button>
         <button type="button" data-view="top" aria-pressed="false">真上</button>
+        <button type="button" data-view="hall" aria-pressed="false">会場</button>
       </div>
+    </section>
+
+    <section>
+      <h2>会場</h2>
+      <div class="seg" id="hallToggle">
+        <button type="button" data-hall="on" aria-pressed="true">イノベーションハブ</button>
+        <button type="button" data-hall="off" aria-pressed="false">なし</button>
+      </div>
+      <p class="note">名城大学 研究実験棟 III のイノベーションハブ。3D ツアーを見て起こした見立てで、広さ（約 29 × 14 m）や机の並びは目測。</p>
     </section>
 
     <section>
@@ -208,6 +218,7 @@
 <script type="module">
 import * as THREE from "three";
 import {OrbitControls} from "three/addons/controls/OrbitControls.js";
+import {mergeGeometries} from "three/addons/utils/BufferGeometryUtils.js";
 
 // ---- 状態 -------------------------------------------------------------
 const state = {
@@ -221,6 +232,8 @@ const state = {
   // 持ち込む iPad に何を映すか。observer: 観測 (前面カメラで来場者を骨格にする) / slides: 資料 / video: デモ動画 / none: 置かない
   ipads: {pro: "observer", mini: "video"},
   dropped: [false, false, false],
+  // 会場 (名城大のイノベーションハブ) を周りに描くか
+  hall: true,
 };
 
 // 寸法 (m)。ロゴとパネルは入稿データ (iubeo-booth/print) の仕上がり寸法
@@ -249,14 +262,14 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color("#f3f3f0");
-scene.fog = new THREE.Fog("#f3f3f0", 8, 20);
+scene.fog = new THREE.Fog("#f3f3f0", 16, 55);
 
 const camera = new THREE.PerspectiveCamera(42, 1, 0.05, 80);
 const controls = new OrbitControls(camera, canvas);
 controls.enableDamping = true;
 controls.maxPolarAngle = Math.PI * 0.495;
 controls.minDistance = 0.6;
-controls.maxDistance = 12;
+controls.maxDistance = 22;
 
 scene.add(new THREE.HemisphereLight("#ffffff", "#d8d8d2", 1.9));
 const sun = new THREE.DirectionalLight("#ffffff", 1.4);
@@ -268,10 +281,12 @@ sun.shadow.bias = -0.0004;
 sun.shadow.radius = 4;
 scene.add(sun);
 
-const venue = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), new THREE.MeshLambertMaterial({color: "#e9e9e5"}));
-venue.rotation.x = -Math.PI / 2;
-venue.receiveShadow = true;
-scene.add(venue);
+// 会場の外の床。会場を描くときは、その床 (y = 0) の下にもぐらせる
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), new THREE.MeshLambertMaterial({color: "#e9e9e5"}));
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -0.002;
+ground.receiveShadow = true;
+scene.add(ground);
 const grid = new THREE.GridHelper(60, 120, "#d6d6d0", "#dfdfda");
 grid.position.y = 0.001;
 scene.add(grid);
@@ -608,7 +623,7 @@ const box = (w, h, d, mat = M.white, edges = true) => {
 
 // 13 インチの MacBook (304 × 215 mm)。本体と蓋で厚さ 11 mm
 const MAC = {w: 0.304, d: 0.215, base: 0.007, lid: 0.004};
-const laptop = (dropped) => {
+const laptop = (dropped, tex = gameTex(dropped)) => {
   const g = new THREE.Group();
   const base = box(MAC.w, MAC.base, MAC.d, M.grey);
   base.position.y = MAC.base / 2;
@@ -629,7 +644,7 @@ const laptop = (dropped) => {
   back.position.y = MAC.d / 2;
   lid.add(back);
   // 画面は縁を細く残す
-  const screen = new THREE.Mesh(new THREE.PlaneGeometry(MAC.w - 0.012, MAC.d - 0.016), new THREE.MeshBasicMaterial({map: gameTex(dropped)}));
+  const screen = new THREE.Mesh(new THREE.PlaneGeometry(MAC.w - 0.012, MAC.d - 0.016), new THREE.MeshBasicMaterial({map: tex}));
   screen.position.set(0, MAC.d / 2 + 0.002, MAC.lid / 2 + 0.0005);
   lid.add(screen);
   g.add(lid);
@@ -1156,6 +1171,495 @@ const onEdge = (obj, edge, {along = 0, inward = 0, y = 0} = {}) => {
   return obj;
 };
 
+// ---- 会場 ------------------------------------------------------------
+// 名城大学 研究実験棟 III の innovation hub。情報工学部のサイトにある Matterport の 3D ツアーを見て起こした見立て。
+// 広さはツアーのタグの位置から見積もった約 29 × 14 m。天井はコンクリート打ち放しで、梁で 4 つの区画に分かれ、
+// 銀色のダクト・配線ラック・直管の照明・天井吊りのエアコンが見えている。長い壁の片方が窓、反対側が本棚とスクリーン。
+// 机 (このブースと同じ台形の机) は会場全体に並ぶ。このブースは窓を背にして、通路側 (+z) を向く
+const ROOM = {x0: -14.5, x1: 14.5, z0: -7.5, z1: 6.5, slab: 3.9, beam: 3.2};
+const BAY = (ROOM.x1 - ROOM.x0) / 4;
+// 視点がこれより高いと天井を外す (斜め上・真上から見下ろせるように)
+const HANG = 2.75;
+// 他のチームの机の並び。列は 4.8 m おき、2 列目はこのブースの奥
+const HALL_COLS = [-9.6, -4.8, 0, 4.8, 9.6];
+const HALL_ROWS = [0, -4.6];
+
+const rng = (seed) => () => ((seed = (seed * 1103515245 + 12345) >>> 0) >>> 8) / 16777216;
+const repeatTex = (t, rx, ry) => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rx, ry); return t; };
+const at = (obj, x, y, z, ry = 0) => { obj.position.set(x, y, z); obj.rotation.y = ry; return obj; };
+
+// 会場の物は、ブースより輪郭線を薄くして背景に下げる
+const hallEdge = new THREE.LineBasicMaterial({color: "#1d1d1b", transparent: true, opacity: 0.16});
+const vbox = (w, h, d, mat, edges = true) => {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  if (edges) m.add(new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry), hallEdge));
+  return m;
+};
+const V = {
+  wall: new THREE.MeshLambertMaterial({color: "#ecebe6"}),
+  concrete: new THREE.MeshLambertMaterial({color: "#cbcac4"}),
+  sash: new THREE.MeshLambertMaterial({color: "#7d8081"}),
+  tray: new THREE.MeshLambertMaterial({color: "#c3c5c6"}),
+  pipe: new THREE.MeshLambertMaterial({color: "#d3c28f"}),
+  wood: new THREE.MeshLambertMaterial({color: "#d9c7a3"}),
+  door: new THREE.MeshLambertMaterial({color: "#c9c9c4"}),
+  lamp: new THREE.MeshBasicMaterial({color: "#ffffff"}),
+  screen: new THREE.MeshBasicMaterial({color: "#f2f2ef"}),
+};
+const mapMats = new Map();
+const mapMat = (tex, basic = false) => {
+  const key = `${tex.uuid}:${basic}`;
+  if (!mapMats.has(key)) mapMats.set(key, basic ? new THREE.MeshBasicMaterial({map: tex}) : new THREE.MeshLambertMaterial({map: tex}));
+  return mapMats.get(key);
+};
+
+// タイルカーペット: 50 cm 角を、目の向きを交互にして貼る。1 枚の絵で 1 m 角
+const carpetTex = () => canvasTex("carpet", 512, 512, (g, w, h) => {
+  const r = rng(5);
+  g.fillStyle = "#a6a59f"; g.fillRect(0, 0, w, h);
+  for (let ty = 0; ty < 2; ty++) for (let tx = 0; tx < 2; tx++) {
+    const ox = (tx * w) / 2, oy = (ty * h) / 2, across = (tx + ty) % 2 === 0;
+    for (let k = 0; k < 1400; k++) {
+      const a = r() * (w / 2 - 14), b = r() * (h / 2 - 14), len = 4 + r() * 10;
+      g.fillStyle = r() < 0.5 ? "rgba(60,60,56,0.16)" : "rgba(245,245,240,0.2)";
+      if (across) g.fillRect(ox + a, oy + b, len, 1.6); else g.fillRect(ox + a, oy + b, 1.6, len);
+    }
+    g.strokeStyle = "rgba(70,70,66,0.22)"; g.lineWidth = 2;
+    g.strokeRect(ox + 1, oy + 1, w / 2 - 2, h / 2 - 2);
+  }
+});
+
+// 打ち放しの天井: 型枠 (1.8 × 0.9 m) の継ぎ目と、セパの穴。1 枚の絵で 3.6 × 1.8 m
+const slabTex = () => canvasTex("slab", 512, 256, (g, w, h) => {
+  const r = rng(9);
+  g.fillStyle = "#c4c3bd"; g.fillRect(0, 0, w, h);
+  for (let k = 0; k < 500; k++) {
+    g.fillStyle = `rgba(${r() < 0.5 ? "90,90,86" : "235,235,230"},${0.05 + r() * 0.08})`;
+    g.beginPath(); g.arc(r() * w, r() * h, 2 + r() * 14, 0, Math.PI * 2); g.fill();
+  }
+  g.strokeStyle = "rgba(90,90,86,0.35)"; g.lineWidth = 2;
+  g.beginPath();
+  for (let i = 0; i <= 2; i++) { g.moveTo((i * w) / 2, 0); g.lineTo((i * w) / 2, h); g.moveTo(0, (i * h) / 2); g.lineTo(w, (i * h) / 2); }
+  g.stroke();
+  g.fillStyle = "rgba(80,80,76,0.5)";
+  for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { g.beginPath(); g.arc(((i + 0.5) * w) / 4, ((j + 0.5) * h) / 4, 2.5, 0, Math.PI * 2); g.fill(); }
+});
+
+// 蛇腹のダクト: 長さ方向に 5 cm おきの山
+const ductTex = () => canvasTex("duct", 16, 32, (g, w, h) => {
+  const grad = g.createLinearGradient(0, 0, 0, h);
+  grad.addColorStop(0, "#b9bbbc"); grad.addColorStop(0.5, "#d4d6d7"); grad.addColorStop(0.8, "#9a9c9e"); grad.addColorStop(1, "#b9bbbc");
+  g.fillStyle = grad; g.fillRect(0, 0, w, h);
+});
+
+// 窓の外: 明るい空と、低い建物と植え込み
+const outsideTex = () => canvasTex("outside", 2048, 160, (g, w, h) => {
+  const sky = g.createLinearGradient(0, 0, 0, h);
+  sky.addColorStop(0, "#e4ebee"); sky.addColorStop(0.6, "#f0f2f1"); sky.addColorStop(1, "#e2e4df");
+  g.fillStyle = sky; g.fillRect(0, 0, w, h);
+  const r = rng(21);
+  g.fillStyle = "#d6d9d6";
+  for (let x = 0; x < w; x += 40 + r() * 120) { const bw = 30 + r() * 90, bh = 20 + r() * 50; g.fillRect(x, h * 0.7 - bh, bw, bh + h * 0.3); }
+  g.fillStyle = "#c3cbc0";
+  for (let x = 0; x < w; x += 14 + r() * 20) { g.beginPath(); g.arc(x, h * 0.78, 10 + r() * 16, 0, Math.PI * 2); g.fill(); }
+  g.fillRect(0, h * 0.78, w, h);
+});
+
+// 黒い本棚 (900 × 1800 × 350) の正面。段ごとに背表紙を並べる
+const SHELF = {w: 0.9, h: 1.8, d: 0.35};
+const shelfTex = (seed) => canvasTex(`shelf:${seed}`, 256, 512, (g, w, h) => {
+  const r = rng(seed);
+  g.fillStyle = "#232321"; g.fillRect(0, 0, w, h);
+  const rows = 5, frame = 10, rowH = (h - frame) / rows;
+  const spines = ["#ecebe5", "#d4cfc2", "#a19c90", "#6d6a63", "#5f6b72", "#8b7a68", "#c9c2ae", "#3f4448", "#9aa39a"];
+  for (let i = 0; i < rows; i++) {
+    const top = frame + i * rowH, bottom = top + rowH - frame;
+    g.fillStyle = "#121211"; g.fillRect(frame, top, w - frame * 2, rowH - frame);
+    let x = frame + 2;
+    const end = w - frame - 2 - (r() < 0.3 ? r() * 120 : 0);
+    while (x < end) {
+      const bw = 6 + r() * 12, bh = (rowH - frame) * (0.6 + r() * 0.35);
+      if (x + bw > end) break;
+      g.fillStyle = spines[Math.floor(r() * spines.length)];
+      g.fillRect(x, bottom - bh, bw, bh);
+      x += bw + (r() < 0.1 ? 4 : 1);
+    }
+  }
+});
+const shelfUnit = (seed) => {
+  const g = new THREE.Group();
+  const body = vbox(SHELF.w, SHELF.h, SHELF.d, M.dark, false);
+  body.position.y = SHELF.h / 2;
+  g.add(body);
+  const face = new THREE.Mesh(new THREE.PlaneGeometry(SHELF.w, SHELF.h), mapMat(shelfTex(seed)));
+  face.position.set(0, SHELF.h / 2, SHELF.d / 2 + 0.001);
+  g.add(face);
+  return g;
+};
+
+// 他のチームの画面: エディタと、作っているアプリの見立て
+const codeTex = () => canvasTex("code", 640, 400, (g, w, h) => {
+  const r = rng(13);
+  g.fillStyle = "#272725"; g.fillRect(0, 0, w, h);
+  g.fillStyle = "#30302d"; g.fillRect(0, 0, w * 0.22, h);
+  for (let y = 26; y < h - 12; y += 15) {
+    g.fillStyle = "#4a4a46"; g.fillRect(14, y, 40 + r() * 70, 5);
+    if (r() < 0.15) continue;
+    g.fillStyle = r() < 0.3 ? "#b9bcb8" : "#7b7d79";
+    g.fillRect(w * 0.22 + 20 + Math.floor(r() * 4) * 18, y, 40 + r() * 240, 5);
+  }
+});
+const appTex = () => canvasTex("app", 640, 400, (g, w, h) => {
+  g.fillStyle = "#f7f7f5"; g.fillRect(0, 0, w, h);
+  g.fillStyle = "#3b3f44"; g.fillRect(0, 0, w, 44);
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++) {
+    g.fillStyle = "#d9dcd8"; g.fillRect(30 + i * 200, 70 + j * 160, 180, 140);
+    g.fillStyle = "#9aa09c"; g.fillRect(44 + i * 200, 180 + j * 160, 110, 10);
+  }
+});
+
+// キャスター付きのホワイトボード (1800 × 900)。正面は +z
+const boardTex = () => canvasTex("whiteboard", 512, 256, (g, w, h) => {
+  g.fillStyle = "#fbfbfa"; g.fillRect(0, 0, w, h);
+  g.strokeStyle = "#cfcfca"; g.lineWidth = 8; g.strokeRect(4, 4, w - 8, h - 8);
+  const r = rng(33);
+  g.strokeStyle = "#5c6670"; g.lineWidth = 3; g.lineCap = "round";
+  for (let k = 0; k < 7; k++) {
+    const y = 40 + k * 26;
+    let x = 40 + (k % 3) * 16;
+    const end = 180 + r() * 250;
+    g.beginPath(); g.moveTo(x, y);
+    while (x < end) { x += 8 + r() * 10; g.lineTo(x, y + (r() - 0.5) * 6); }
+    g.stroke();
+  }
+  g.strokeRect(330, 60, 120, 70);
+  g.beginPath(); g.moveTo(390, 130); g.lineTo(390, 180); g.stroke();
+});
+const whiteboard = () => {
+  const g = new THREE.Group();
+  const board = box(1.8, 0.9, 0.03, M.white);
+  board.position.y = 1.35;
+  g.add(board);
+  const face = new THREE.Mesh(new THREE.PlaneGeometry(1.76, 0.86), mapMat(boardTex()));
+  face.position.set(0, 1.35, 0.016);
+  g.add(face);
+  for (const sx of [-1, 1]) {
+    g.add(at(box(0.035, 1.8, 0.035, M.leg, false), sx * 0.92, 0.98, 0));
+    g.add(at(box(0.04, 0.03, 0.6, M.leg, false), sx * 0.92, 0.08, 0));
+    for (const sz of [-1, 1]) {
+      const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.025, 12), M.dark);
+      wheel.rotation.z = Math.PI / 2;
+      wheel.position.set(sx * 0.92, 0.035, sz * 0.27);
+      g.add(wheel);
+    }
+  }
+  g.add(at(box(1.5, 0.02, 0.07, M.grey, false), 0, 0.89, 0.04));
+  return g;
+};
+
+// 巻き上げ式のスクリーン。中心が原点、正面は +z
+const projScreen = (w, h) => {
+  const g = new THREE.Group();
+  g.add(new THREE.Mesh(new THREE.PlaneGeometry(w, h), V.screen));
+  g.add(at(vbox(w + 0.06, h + 0.06, 0.01, M.dark, false), 0, 0, -0.008));
+  g.add(at(vbox(w + 0.16, 0.1, 0.1, M.white), 0, h / 2 + 0.08, -0.02));
+  return g;
+};
+const projector = () => {
+  const g = new THREE.Group();
+  g.add(vbox(0.36, 0.12, 0.3, M.white));
+  const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.02, 16), M.dark);
+  lens.rotation.x = Math.PI / 2;
+  lens.position.set(0.08, 0, 0.155);
+  g.add(lens);
+  return g;
+};
+// 天井から吊るす全ねじ。y0 から天井まで
+const hanger = (x, z, y0) => at(new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, ROOM.slab - y0, 6), V.tray), x, (ROOM.slab + y0) / 2, z);
+const lightBar = () => {
+  const g = new THREE.Group();
+  g.add(vbox(1.25, 0.05, 0.13, M.white));
+  const tube = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.07), V.lamp);
+  tube.rotation.x = Math.PI / 2;
+  tube.position.y = -0.026;
+  g.add(tube);
+  return g;
+};
+const acUnit = () => {
+  const g = new THREE.Group();
+  g.add(vbox(0.84, 0.26, 0.84, M.white));
+  const grille = new THREE.Mesh(new THREE.PlaneGeometry(0.56, 0.56), M.grey);
+  grille.rotation.x = Math.PI / 2;
+  grille.position.y = -0.131;
+  g.add(grille);
+  return g;
+};
+const door = () => {
+  const g = new THREE.Group();
+  g.add(at(vbox(1.0, 2.15, 0.05, V.sash, false), 0, 1.075, 0));
+  g.add(at(vbox(0.9, 2.08, 0.04, V.door), 0, 1.04, 0.02));
+  g.add(at(vbox(0.02, 0.2, 0.03, V.sash, false), 0.36, 1.0, 0.05));
+  return g;
+};
+// 木目の収納棚 (900 × 2200 × 550)。両開き
+const cabinet = () => {
+  const g = new THREE.Group();
+  g.add(at(vbox(0.9, 2.2, 0.55, V.wood), 0, 1.1, 0));
+  g.add(at(vbox(0.004, 2.1, 0.004, M.dark, false), 0, 1.1, 0.277));
+  for (const s of [-1, 1]) g.add(at(vbox(0.012, 0.16, 0.02, M.dark, false), s * 0.04, 1.1, 0.285));
+  return g;
+};
+// 黒いハイテーブルとスツール
+const barTable = () => {
+  const g = new THREE.Group();
+  g.add(at(box(0.6, 0.035, 1.5, M.dark), 0, 1.0, 0));
+  for (const sz of [-1, 1]) {
+    g.add(at(box(0.05, 0.98, 0.05, M.dark, false), 0, 0.49, sz * 0.6));
+    g.add(at(box(0.5, 0.03, 0.06, M.dark, false), 0, 0.015, sz * 0.6));
+  }
+  return g;
+};
+const stool = () => {
+  const g = new THREE.Group();
+  g.add(at(new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.04, 20), M.dark), 0, 0.72, 0));
+  for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+    g.add(at(new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 0.7, 6), M.dark), sx * 0.11, 0.35, sz * 0.11));
+  }
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.008, 6, 20), M.dark);
+  ring.rotation.x = Math.PI / 2;
+  ring.position.y = 0.28;
+  g.add(ring);
+  g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  return g;
+};
+// 卓上モニター。正面は +z
+const deskMonitor = (tex) => {
+  const g = new THREE.Group();
+  g.add(at(box(0.2, 0.012, 0.16, M.dark, false), 0, 0.006, 0));
+  g.add(at(box(0.04, 0.2, 0.02, M.dark, false), 0, 0.11, -0.04));
+  g.add(at(box(0.62, 0.37, 0.025, M.dark), 0, 0.32, -0.02));
+  g.add(at(new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.34), mapMat(tex, true)), 0, 0.32, -0.007));
+  return g;
+};
+
+// 他のチームのブース: 同じ六角形の机 (1 辺 1 m、クロスなし) に 3 席。座っている人は crowd に入れる
+const otherBooth = (k, x, z, crowd) => {
+  const g = new THREE.Group();
+  const verts = hexVerts(2, 1, Math.sqrt(3));
+  const edges = hexEdges(verts);
+  g.add(hexTable(verts, false));
+  const r = rng(101 + k * 17);
+  const seats = k % 2 ? [0, 2, 4] : [5, 1, 3];
+  for (const ei of seats) {
+    const e = edges[ei];
+    const s = at(new THREE.Group(), e.mid[0], 0, e.mid[1], e.rotY);
+    const seated = r() < 0.45;
+    const c = chair();
+    if (seated) c.position.z = CHAIR_GAP;
+    else at(c, (r() - 0.5) * 0.2, 0, CHAIR_GAP + r() * 0.3, (r() - 0.5) * 0.9);
+    s.add(c);
+    if (seated || r() < 0.6) {
+      const lap = laptop(false, r() < 0.6 ? codeTex() : appTex());
+      lap.position.set(0, TOP, -0.17);
+      s.add(lap);
+    }
+    if (seated) crowd.add(at(skeleton(seatedPose()), x + e.mid[0], 0, z + e.mid[1], e.rotY));
+    g.add(s);
+  }
+  const free = edges.filter((e) => !seats.includes(e.i));
+  if (r() < 0.7) g.add(onEdge(deskMonitor(r() < 0.5 ? appTex() : codeTex()), free[Math.floor(r() * 3)], {inward: 0.22, y: TOP}));
+  if (r() < 0.6) {
+    const card = tentCard(0.2, 0.14, null);
+    g.add(onEdge(card, free[Math.floor(r() * 3)], {along: 0.25, inward: 0.12, y: TOP}));
+  }
+  return g;
+};
+
+// 動かない物は材質ごとに 1 つの形へまとめて、描く回数を減らす
+const flatten = (root, {shadows = true} = {}) => {
+  root.updateMatrixWorld(true);
+  const out = new THREE.Group();
+  const buckets = new Map();
+  root.traverse((o) => {
+    if (!o.geometry) return;
+    const kind = o.isLineSegments ? "seg" : o.isLine ? "line" : o.isMesh ? "mesh" : null;
+    if (!kind) return;
+    let geo = o.geometry.clone().applyMatrix4(o.matrixWorld);
+    if (kind === "line") { out.add(new THREE.Line(geo, o.material)); return; }
+    if (geo.index) geo = geo.toNonIndexed();
+    const cast = shadows && kind === "mesh" && o.castShadow;
+    const key = `${kind}:${o.material.uuid}:${cast}`;
+    if (!buckets.has(key)) buckets.set(key, {kind, mat: o.material, cast, geos: []});
+    buckets.get(key).geos.push(geo);
+  });
+  for (const {kind, mat, cast, geos} of buckets.values()) {
+    const geo = mergeGeometries(geos);
+    const obj = kind === "seg" ? new THREE.LineSegments(geo, mat) : new THREE.Mesh(geo, mat);
+    if (kind === "mesh") { obj.castShadow = cast; obj.receiveShadow = true; }
+    out.add(obj);
+  }
+  return out;
+};
+
+const buildHall = () => {
+  const {x0, x1, z0, z1, slab, beam} = ROOM;
+  const W = x1 - x0, Dz = z1 - z0, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+  const T = 0.2;
+  const pillarXs = [0, 1, 2, 3, 4].map((k) => Math.min(x1 - 0.4, Math.max(x0 + 0.4, x0 + BAY * k)));
+  const root = new THREE.Group();
+  // 壁は、視点がその壁の外にあると消す (模型の箱を外から覗くように)。nx·x + nz·z <= d が部屋の内側
+  const walls = [];
+  const addWall = (nx, nz, d, fill) => {
+    const g = new THREE.Group();
+    fill(g);
+    const group = flatten(g, {shadows: false});
+    root.add(group);
+    walls.push({group, nx, nz, d});
+  };
+
+  // 北: 窓の壁 (このブースの背中側)。腰壁の上に、1.2 m おきのサッシ
+  addWall(0, -1, -z0, (g) => {
+    g.add(at(vbox(W, 0.85, T, V.wall), cx, 0.425, z0 - T / 2));
+    g.add(at(vbox(W, slab - 2.75, T, V.wall), cx, (2.75 + slab) / 2, z0 - T / 2));
+    g.add(at(new THREE.Mesh(new THREE.PlaneGeometry(W, 1.9), mapMat(outsideTex(), true)), cx, 1.8, z0 - 0.1));
+    for (let x = x0 + 1.2; x < x1; x += 1.2) g.add(at(vbox(0.05, 1.9, 0.08, V.sash, false), x, 1.8, z0 - 0.07));
+    for (const y of [0.87, 2.2, 2.73]) g.add(at(vbox(W, 0.05, 0.1, V.sash, false), cx, y, z0 - 0.06));
+    for (const x of pillarXs) g.add(at(vbox(0.8, slab, 0.45, V.concrete), x, slab / 2, z0 + 0.225));
+    // 窓の前に吊ったスクリーン
+    for (const x of [-3.6, 10.9]) {
+      g.add(at(projScreen(2.6, 1.5), x, 2.15, z0 + 0.9));
+      for (const s of [-1, 1]) g.add(hanger(x + s * 1.2, z0 + 0.88, 2.98));
+    }
+  });
+
+  // 南: 白い壁に黒い本棚とスクリーン、扉
+  addWall(0, 1, z1, (g) => {
+    const face = Math.PI;
+    g.add(at(vbox(W, slab, T, V.wall), cx, slab / 2, z1 + T / 2));
+    for (const x of pillarXs) g.add(at(vbox(0.8, slab, 0.45, V.concrete), x, slab / 2, z1 - 0.225));
+    [-5.85, -4.95, -4.05, -3.15, -2.25, -1.35, 0.9, 1.8, 5.5, 6.4]
+      .forEach((x, i) => g.add(at(shelfUnit(1 + (i % 3)), x, 0, z1 - SHELF.d / 2, face)));
+    g.add(at(projScreen(2.4, 1.35), 3.65, 1.85, z1 - 0.06, face));
+    g.add(at(projScreen(2.6, 1.5), -10.2, 2.0, z1 - 0.06, face));
+    g.add(at(projScreen(2.6, 1.5), 10.9, 2.0, z1 - 0.06, face));
+    g.add(at(door(), -12.8, 0, z1 - 0.03, face));
+  });
+
+  // 西: スクリーンと扉 2 枚。手前にハイテーブル
+  addWall(-1, 0, -x0, (g) => {
+    g.add(at(vbox(T, slab, Dz + T * 2, V.wall), x0 - T / 2, slab / 2, cz));
+    g.add(at(projScreen(2.6, 1.5), x0 + 0.06, 2.1, 0.5, Math.PI / 2));
+    for (const z of [-5.4, 4.6]) g.add(at(door(), x0 + 0.03, 0, z, Math.PI / 2));
+  });
+
+  // 東: 木目の収納棚、スクリーン 2 枚、扉
+  addWall(1, 0, x1, (g) => {
+    g.add(at(vbox(T, slab, Dz + T * 2, V.wall), x1 + T / 2, slab / 2, cz));
+    for (const z of [-0.9, 0, 0.9, 1.8]) g.add(at(cabinet(), x1 - 0.3, 0, z, -Math.PI / 2));
+    g.add(at(projScreen(2.6, 1.5), x1 - 0.06, 2.1, -3.2, -Math.PI / 2));
+    g.add(at(projScreen(2.4, 1.35), x1 - 0.06, 2.1, 4.4, -Math.PI / 2));
+    g.add(at(door(), x1 - 0.03, 0, -6.2, -Math.PI / 2));
+  });
+
+  // 天井: 打ち放しの床版と梁、その下を走るダクト・配線ラック・配管・照明・エアコン・プロジェクター
+  const ceil = new THREE.Group();
+  const slabMesh = new THREE.Mesh(new THREE.PlaneGeometry(W, Dz), new THREE.MeshLambertMaterial({map: repeatTex(slabTex(), W / 3.6, Dz / 1.8)}));
+  slabMesh.rotation.x = Math.PI / 2;
+  ceil.add(at(slabMesh, cx, slab, cz));
+  const bh = slab - beam;
+  for (let k = 1; k < 4; k++) ceil.add(at(vbox(0.6, bh, Dz, V.concrete), x0 + BAY * k, beam + bh / 2, cz));
+  for (const z of [z0 + 0.3, z1 - 0.3]) ceil.add(at(vbox(W, bh, 0.6, V.concrete), cx, beam + bh / 2, z));
+  const ductMat = new THREE.MeshLambertMaterial({map: repeatTex(ductTex(), 1, W / 0.05), side: THREE.DoubleSide});
+  for (const [z, rad] of [[-4.2, 0.2], [3.0, 0.2], [0.4, 0.13]]) {
+    const d = new THREE.Mesh(new THREE.CylinderGeometry(rad, rad, W, 20, 1, true), ductMat);
+    d.rotation.z = Math.PI / 2;
+    d.position.set(cx, beam - rad - 0.06, z);
+    ceil.add(d);
+    for (let x = x0 + 2; x < x1; x += 3) ceil.add(hanger(x, z, beam - 0.06));
+  }
+  for (const z of [-0.8, 5.6]) {
+    const y = beam - 0.12;
+    ceil.add(at(vbox(W, 0.012, 0.4, V.tray, false), cx, y, z));
+    for (const s of [-1, 1]) ceil.add(at(vbox(W, 0.07, 0.015, V.tray, false), cx, y + 0.03, z + s * 0.2));
+    for (let x = x0 + 1; x < x1; x += 1.8) for (const s of [-1, 1]) ceil.add(hanger(x, z + s * 0.21, y));
+  }
+  const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, W, 10), V.pipe);
+  pipe.rotation.z = Math.PI / 2;
+  pipe.position.set(cx, beam - 0.2, -1.6);
+  ceil.add(pipe);
+  for (const z of [-6.0, -2.4, 1.2, 4.6]) {
+    for (let x = x0 + 1.6; x + 0.6 < x1 - 0.6; x += 1.6) {
+      ceil.add(at(lightBar(), x, 2.95, z));
+      for (const s of [-1, 1]) ceil.add(hanger(x + s * 0.5, z, 2.975));
+    }
+  }
+  for (let k = 0; k < 4; k++) for (const z of [-3.2, 2.1]) ceil.add(at(acUnit(), x0 + BAY * (k + 0.5), 3.3, z));
+  for (const [x, z, ry] of [[3.65, z1 - 3.5, 0], [-10.2, z1 - 3.5, 0], [10.9, z1 - 3.5, 0], [-3.6, z0 + 3.6, Math.PI], [10.9, z0 + 3.6, Math.PI], [x0 + 3.5, 0.5, -Math.PI / 2], [x1 - 3.5, -3.2, Math.PI / 2], [x1 - 3.5, 4.4, Math.PI / 2]]) {
+    ceil.add(at(projector(), x, 2.9, z, ry));
+    ceil.add(hanger(x, z, 2.96));
+  }
+  // 煙感知器
+  for (let k = 0; k < 4; k++) for (const z of [-5, 0, 5]) {
+    ceil.add(at(new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.04, 16), M.white), x0 + BAY * (k + 0.3), slab - 0.02, z));
+  }
+  const ceiling = flatten(ceil, {shadows: false});
+  root.add(ceiling);
+
+  // 床と、会場全体に並ぶ机
+  const stuff = new THREE.Group();
+  const crowd = new THREE.Group();
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(W, Dz), new THREE.MeshLambertMaterial({map: repeatTex(carpetTex(), W, Dz)}));
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.set(cx, 0, cz);
+  stuff.add(floor);
+  // 床のコンセントの蓋
+  const plate = new THREE.MeshLambertMaterial({color: "#b4b3ad"});
+  for (let x = x0 + 2.4; x < x1; x += 3.6) for (let z = z0 + 2; z < z1; z += 3.5) {
+    const p = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.2), plate);
+    p.rotation.x = -Math.PI / 2;
+    p.position.set(x, 0.002, z);
+    stuff.add(p);
+  }
+  let k = 0;
+  for (const z of HALL_ROWS) for (const x of HALL_COLS) {
+    if (x === 0 && z === 0) continue;
+    stuff.add(at(otherBooth(k++, x, z, crowd), x, 0, z));
+  }
+  for (const z of [-4.4, -1.0, 2.4]) {
+    stuff.add(at(barTable(), x0 + 1.5, 0, z));
+    for (const [dx, dz, ry] of [[-0.55, -0.4, 0.2], [-0.55, 0.4, -0.3], [0.55, -0.35, 0.5], [0.55, 0.3, 0]]) stuff.add(at(stool(), x0 + 1.5 + dx, 0, z + dz, ry));
+  }
+  for (const [z, turn] of [[-5.0, 0.35], [-1.3, 0], [3.6, -0.3]]) stuff.add(at(whiteboard(), x1 - 1.6, 0, z, -Math.PI / 2 + turn));
+  // 通路を歩く人、立ち話をする人
+  for (const [x, z, ry, lean] of [
+    [-6.8, -2.3, -2.2, 0.03], [-6.1, -2.7, 0.9, 0.02], [2.6, -2.4, 2.8, 0.05], [-3.4, 3.0, 2.2, 0.02],
+    [5.2, 4.9, -0.4, 0.04], [5.9, 4.4, -2.9, 0.03], [-11.2, 4.6, 1.0, 0.02], [11.6, -2.2, -1.4, 0.04],
+  ]) crowd.add(at(skeleton(standingPose(lean)), x, 0, z, ry));
+
+  const stuffFlat = flatten(stuff);
+  const crowdFlat = flatten(crowd);
+  root.add(stuffFlat, crowdFlat);
+  return {root, walls, ceiling, crowd: crowdFlat};
+};
+
+const hall = buildHall();
+scene.add(hall.root);
+
+const setHall = (on) => {
+  state.hall = on;
+  hall.root.visible = on;
+  grid.visible = !on;
+  scene.fog.near = on ? 16 : 8;
+  scene.fog.far = on ? 55 : 20;
+};
+// 視点に合わせて、手前の壁と天井を外す
+const updateHall = () => {
+  if (!state.hall) return;
+  const {x, y, z} = camera.position;
+  for (const w of hall.walls) w.group.visible = w.nx * x + w.nz * z <= w.d;
+  hall.ceiling.visible = y < HANG;
+};
+
 // ---- 配置 ------------------------------------------------------------
 let booth = new THREE.Group();
 scene.add(booth);
@@ -1274,6 +1778,7 @@ const build = () => {
   }
 
   booth.traverse((o) => { if (o.isMesh && o.material !== M.outline && !o.material.transparent) o.receiveShadow = true; });
+  hall.crowd.visible = items.people;
 
   // ---- 数字と注意
   const mm = (v) => Math.round(v * 1000).toLocaleString("ja-JP");
@@ -1326,6 +1831,8 @@ const VIEWS = {
   table: () => ({pos: [0.15, 2.6, (state.hexSide * Math.sqrt(3)) / 2 + 1.1], target: [0, TOP, -0.05]}),
   overview: () => ({pos: [1.6 + state.hexSide * 1.2, 2.4 + state.hexSide * 0.8, 2.2 + state.hexSide * 1.2], target: [0, 0.6, 0]}),
   top: () => ({pos: [0, 2.8 + state.hexSide * 2.2, 0.01], target: [0, 0, 0]}),
+  // 会場の角 (ホワイトボードの側) から、窓の壁に向かって見渡す
+  hall: () => ({pos: [11.2, 2.1, 5.6], target: [-2, 1.0, -2]}),
 };
 let tween = null;
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -1383,6 +1890,12 @@ for (const id of ["hexSide", "clothD"]) {
   });
 }
 
+document.getElementById("hallToggle").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  pressOne(e.currentTarget, b);
+  setHall(b.dataset.hall === "on");
+});
+
 document.getElementById("slipHolders").addEventListener("click", (e) => {
   const b = e.target.closest("button"); if (!b) return;
   pressOne(e.currentTarget, b);
@@ -1431,6 +1944,7 @@ const tick = (now) => {
     if (t >= 1) tween = null;
   }
   controls.update();
+  updateHall();
   renderer.render(scene, camera);
   requestAnimationFrame(tick);
 };
