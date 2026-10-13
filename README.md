@@ -77,3 +77,19 @@ pnpm dev           # http://localhost:5173
 
 ロゴは 350 × 103 mm。トンボの位置で切ると、白い余白 20 mm 付きの 390 × 143 mm のカードになる。A3 の紙をそのままボードに貼ってもいい。
 刷り方はファイルのパネルと同じく、白黒、100%（実際のサイズ）で、「用紙に合わせる」は切る。作り直すときは `pnpm print:logo`。
+
+## お題の三角紙（入稿データ）
+
+ゲームの PC の横にあるお題のメモ（`iubeo/frontend/src/objects/pc/search/TaskMemo.tsx`）を写した卓上カード。お題の語のところにチーム名「ゆーべお」を入れてある。
+
+- `print/png/memo-a4.png`：A4 縦、300 dpi
+- `print/memo-a4.pdf`：上と同じ PDF（日本語の文字を埋め込み済み）
+
+200 × 140 mm の面を上下に 2 面並べ、上の面は上下逆さに刷ってある。トンボで切り、真ん中の破線で山折りにすると、表からも裏からも読める三角のカードになる。厚手の紙で刷ると立てやすい。
+
+作り直すときは `pnpm print:memo`。お題の語を変えるときは、次のように語を渡す（macOS のみ）。
+
+```sh
+swift scripts/print-memo.swift print/memo-a4.pdf "別の語"
+swift scripts/pdf-to-png.swift print/memo-a4.pdf print/png 300 memo-a4
+```
