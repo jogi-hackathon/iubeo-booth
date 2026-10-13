@@ -164,7 +164,6 @@
         <button type="button" class="chip" data-item="cloth" aria-pressed="true">白いクロス</button>
         <button type="button" class="chip" data-item="logo" aria-pressed="true">ロゴ（A3）</button>
         <button type="button" class="chip" data-item="files" aria-pressed="true">ファイルのパネル（A4）</button>
-        <button type="button" class="chip" data-item="headsets" aria-pressed="true">ヘッドセット</button>
         <button type="button" class="chip" data-item="chairs" aria-pressed="true">椅子</button>
         <button type="button" class="chip" data-item="people" aria-pressed="true">人</button>
       </div>
@@ -205,7 +204,7 @@ const state = {
   clothD: 2.75,
   // 六角形の辺に 1 つおきに 3 人が座り、中央を 120° ずつ囲む。IUBEO のサンドボックスと同じ形
   mode: "front-free",
-  items: {cloth: true, logo: true, files: true, headsets: true, chairs: true, people: true},
+  items: {cloth: true, logo: true, files: true, chairs: true, people: true},
   // 持ち込む iPad に何を映すか。observer: 観測 (前面カメラで来場者を骨格にする) / slides: 資料 / video: デモ動画 / none: 置かない
   ipads: {pro: "observer", mini: "video"},
   dropped: [false, false, false],
@@ -529,21 +528,6 @@ const laptop = (dropped) => {
   return g;
 };
 
-const headset = () => {
-  const g = new THREE.Group();
-  const band = new THREE.Mesh(new THREE.TorusGeometry(0.08, 0.008, 8, 24, Math.PI), M.dark);
-  band.rotation.x = -Math.PI / 2;
-  band.position.y = 0.03;
-  g.add(band);
-  for (const s of [-1, 1]) {
-    const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.03, 20), M.dark);
-    cup.position.set(s * 0.08, 0.018, 0);
-    g.add(cup);
-  }
-  g.traverse((o) => { o.castShadow = true; });
-  return g;
-};
-
 // ゲーム本体と同じ比率の骨格。頭 0.11m、関節 0.03m
 const SKELETON = {head: 0.11, joint: 0.032, bone: 0.02, outline: 0.009};
 const sphereGeo = new THREE.SphereGeometry(1, 20, 14);
@@ -862,12 +846,6 @@ const seat = (index, edge) => {
   const lap = laptop(dropped);
   lap.position.set(0, TOP, -0.17);
   g.add(lap);
-  if (items.headsets) {
-    const hs = headset();
-    hs.position.set(0.24, TOP, -0.13);
-    hs.rotation.y = 0.4;
-    g.add(hs);
-  }
   if (items.chairs) {
     const c = chair();
     c.position.set(0, 0, CHAIR_GAP);
@@ -1003,8 +981,6 @@ const build = () => {
   ];
   document.getElementById("stats").innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
   const msgs = [];
-  const shortest = Math.min(...seatEdges.map((ei) => edges[ei].len));
-  if (items.headsets && shortest < 0.62) msgs.push("座る辺が 620 未満。ノート PC とヘッドセットを並べると窮屈。");
   const warn = document.getElementById("warn");
   warn.hidden = msgs.length === 0;
   warn.textContent = msgs.join(" ");
