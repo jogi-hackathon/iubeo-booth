@@ -1190,7 +1190,7 @@ const dispose = (obj) => {
 };
 
 const MODE_NOTES = {
-  "front-free": "通路側の辺を空け、ロゴと iPad を通路に向ける。3 人は残りの辺から中央を囲む。",
+  "front-free": "通路側の辺を空け、ロゴ・iPad Pro・三角紙を通路に向ける。左奥は伝票、右奥は iPad mini と配る用のカード。3 人は残りの辺から中央を囲む。",
   "front-seat": "通路側の辺にも座る。通路から 1 人の画面が見える。ロゴと iPad は左手前の辺に寄せる。",
 };
 
@@ -1215,16 +1215,35 @@ const build = () => {
 
   // 通路にいちばん近い空きの辺: 観測モニターとロゴ
   const show = free[0];
-  // 通路側の辺の天板に、iPad を 2 台並べて通路へ向ける
-  const ipads = [["pro", -0.27], ["mini", 0.27]].filter(([k]) => state.ipads[k] !== "none");
-  for (const [k, along] of ipads) {
-    const t = tablet(SIZES[k], IPAD_TEX[state.ipads[k]]());
-    booth.add(onEdge(t, show, {along: ipads.length === 1 ? 0 : along, inward: 0.12, y: TOP}));
+  // 空いた 3 辺に役割を分ける
+  //   正面 (show)      : iPad Pro と、お題の三角紙 (チーム名)
+  //   左奥 (free[1])   : サーマルプリンタと伝票差し
+  //   右奥 (free[2])   : iPad mini と、配る用のカードの束
+  const side = free[2];
+  const hasPro = state.ipads.pro !== "none";
+  if (hasPro) {
+    const t = tablet(SIZES.pro, IPAD_TEX[state.ipads.pro]());
+    booth.add(onEdge(t, show, {along: items.memo ? -0.18 : 0, inward: 0.12, y: TOP}));
   }
-  // お題の三角紙: iPad の間に置き、お題の語のところにチーム名
   if (items.memo) {
     const [w, h] = SIZES.memo;
-    booth.add(onEdge(tentCard(w, h, memoTex(state.team)), show, {inward: 0.14, y: TOP}));
+    booth.add(onEdge(tentCard(w, h, memoTex(state.team)), show, {along: hasPro ? 0.16 : 0, inward: 0.14, y: TOP}));
+  }
+  const hasMini = state.ipads.mini !== "none";
+  if (hasMini) {
+    const t = tablet(SIZES.mini, IPAD_TEX[state.ipads.mini]());
+    booth.add(onEdge(t, side, {along: items.files ? -0.17 : 0, inward: 0.12, y: TOP}));
+  }
+  // 配る用のカード: 種類ごとに 6 枚ずつ、そろえて束にしておく
+  if (items.files) {
+    ["search", "image", "write"].forEach((kind, k) => {
+      for (let i = 0; i < 6; i++) {
+        const c = palmCard(kind);
+        onEdge(c, side, {along: (hasMini ? 0.04 : -0.13) + k * 0.13, inward: 0.11, y: TOP + 0.001 + i * 0.0011});
+        c.rotation.y += (i % 2 ? 0.03 : -0.02);
+        booth.add(c);
+      }
+    });
   }
   if (items.logo) {
     const [w, h] = SIZES.logo;
@@ -1281,8 +1300,8 @@ const build = () => {
   }
 
   if (items.people) {
-    // 机の奥で説明する人と、通路側から覗き込む来場者
-    const back = free[free.length - 1];
+    // 伝票を刷る係 (プリンタのある左奥の外に立つ) と、通路側から覗き込む来場者
+    const back = free[1];
     const staff = skeleton(standingPose(0.02));
     onEdge(staff, back, {inward: -0.55});
     staff.rotation.y = back.rotY;
@@ -1331,8 +1350,9 @@ const build = () => {
     list.push(["Write のパネル（A4・積む）", "176 × 216"]);
   }
   if (items.files && state.fileSize === "palm") {
-    list.push(["手のひらのファイル × 9（3 種）", "109 × 89 など"]);
+    list.push(["手のひらのファイル × 9（中央に散らす）", "109 × 89 など"]);
   }
+  if (items.files) list.push(["配る用のカード（3 種 × 6 枚の束）", "109 × 89 など"]);
   if (items.printer) {
     list.push(["サーマルプリンタ（58 mm）", "110 × 120"]);
     const HOLDER_NAMES = {clip: "伝票のメモ置き（クリップ）", acrylic: "伝票立て（アクリル筒）", spike: "伝票差し"};
