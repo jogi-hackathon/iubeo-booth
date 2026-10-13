@@ -217,7 +217,7 @@ const CLOTH_MARGIN = 0.03;   // 垂れたクロスの表面が、天板の縁か
 const CHAIR_GAP = 0.45;      // 机の縁から椅子の中心まで
 const SEAT_ROOM = 0.8;       // 机の縁から、座った人の背中側に要る奥行
 const SIZES = {
-  laptop: [0.32, 0.22],
+  laptop: [0.304, 0.215],    // MacBook 13″
   pro: [0.2497, 0.1775],     // iPad Pro 11″ (横向き)
   mini: [0.2, 0.14],         // iPad mini (持ち込む人の申告で約 200 × 140)
   logo: [0.39, 0.143],       // A3 に刷ったロゴを、余白 20 mm 付きで切ったカード
@@ -499,19 +499,31 @@ const box = (w, h, d, mat = M.white, edges = true) => {
   return edges ? withEdges(m) : m;
 };
 
+// 13 インチの MacBook (304 × 215 mm)。本体と蓋で厚さ 11 mm
+const MAC = {w: 0.304, d: 0.215, base: 0.007, lid: 0.004};
 const laptop = (dropped) => {
   const g = new THREE.Group();
-  const base = box(0.32, 0.018, 0.22, M.grey);
-  base.position.y = 0.009;
+  const base = box(MAC.w, MAC.base, MAC.d, M.grey);
+  base.position.y = MAC.base / 2;
   g.add(base);
+  // キーボードとトラックパッドの見立て
+  const keys = new THREE.Mesh(new THREE.PlaneGeometry(MAC.w * 0.86, MAC.d * 0.42), M.dark);
+  keys.rotation.x = -Math.PI / 2;
+  keys.position.set(0, MAC.base + 0.0005, -MAC.d * 0.18);
+  g.add(keys);
+  const pad = new THREE.Mesh(new THREE.PlaneGeometry(MAC.w * 0.4, MAC.d * 0.3), new THREE.MeshLambertMaterial({color: "#cfcfca"}));
+  pad.rotation.x = -Math.PI / 2;
+  pad.position.set(0, MAC.base + 0.0005, MAC.d * 0.25);
+  g.add(pad);
   const lid = new THREE.Group();
-  lid.position.set(0, 0.018, -0.11);
-  lid.rotation.x = -0.32;
-  const back = box(0.32, 0.21, 0.008, M.grey);
-  back.position.y = 0.105;
+  lid.position.set(0, MAC.base, -MAC.d / 2);
+  lid.rotation.x = -0.3;
+  const back = box(MAC.w, MAC.d, MAC.lid, M.grey);
+  back.position.y = MAC.d / 2;
   lid.add(back);
-  const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.29, 0.18), new THREE.MeshBasicMaterial({map: gameTex(dropped)}));
-  screen.position.set(0, 0.11, 0.0045);
+  // 画面は縁を細く残す
+  const screen = new THREE.Mesh(new THREE.PlaneGeometry(MAC.w - 0.012, MAC.d - 0.016), new THREE.MeshBasicMaterial({map: gameTex(dropped)}));
+  screen.position.set(0, MAC.d / 2 + 0.002, MAC.lid / 2 + 0.0005);
   lid.add(screen);
   g.add(lid);
   return g;
@@ -1013,6 +1025,7 @@ const build = () => {
   const SHOW_NAMES = {observer: "観測", slides: "資料", video: "デモ動画"};
   if (state.ipads.pro !== "none") list.push([`iPad Pro 11″（${SHOW_NAMES[state.ipads.pro]}）`, "250 × 178"]);
   if (state.ipads.mini !== "none") list.push([`iPad mini（${SHOW_NAMES[state.ipads.mini]}）`, "200 × 140"]);
+  list.push(["MacBook 13″ × 3", "304 × 215"]);
   if (items.chairs) list.push(["椅子 × 3（会場で借りる）", ""]);
   document.getElementById("itemList").innerHTML = list.map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join("");
 };
