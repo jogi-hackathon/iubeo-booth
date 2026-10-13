@@ -67,6 +67,10 @@
   .field output { font-family: var(--mono); font-size: 12px; font-variant-numeric: tabular-nums; }
   .field input[type="range"] { grid-column: 1 / -1; width: 100%; accent-color: var(--ink); margin: 0; }
 
+  .text-input {
+    font: 500 14px/1.4 var(--sans); padding: 7px 9px; border: 1px solid var(--ink);
+    background: var(--sheet); color: var(--ink); width: 100%; border-radius: 0;
+  }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; }
   .chip { font: 12px/1 var(--sans); padding: 6px 9px; border: 1px solid var(--rule); background: var(--sheet); color: var(--sub); cursor: pointer; }
   .chip[aria-pressed="true"] { border-color: var(--ink); color: var(--ink); }
@@ -156,6 +160,12 @@
         <button type="button" data-show="video" aria-pressed="true">デモ動画</button>
         <button type="button" data-show="none" aria-pressed="false">置かない</button>
       </div>
+    </section>
+
+    <section>
+      <h2>お題の三角紙</h2>
+      <label class="note" for="memoTopic">お題の語（チーム名など）</label>
+      <input class="text-input" id="memoTopic" type="text" value="ゆーべお" maxlength="40" autocomplete="off">
     </section>
 
     <section>
@@ -483,14 +493,16 @@ const memoTex = (topic) => canvasTex(`memo:${topic}`, 512, 358, (ctx, width, hei
   ctx.textAlign = "left";
   ctx.font = `600 34px ${MEMO_FONT}`;
   ctx.fillText("お題", 40, 56);
-  // お題の語は、幅に収まる最大のサイズ (96〜28px) まで大きくする
-  let size = 96;
-  for (; size > 28; size -= 4) {
+  // お題の語は、幅に収まる最大のサイズ (96〜28px) まで大きくする。空なら書かない
+  if (topic) {
+    let size = 96;
+    for (; size > 28; size -= 4) {
+      ctx.font = `bold ${size}px ${MEMO_FONT}`;
+      if (ctx.measureText(topic).width <= width - 80) break;
+    }
     ctx.font = `bold ${size}px ${MEMO_FONT}`;
-    if (ctx.measureText(topic).width <= width - 80) break;
+    ctx.fillText(topic, 40, height / 2 + 6, width - 80);
   }
-  ctx.font = `bold ${size}px ${MEMO_FONT}`;
-  ctx.fillText(topic, 40, height / 2 + 6, width - 80);
   ctx.fillStyle = "#6e6e73";
   ctx.font = `20px ${MEMO_FONT}`;
   ctx.fillText("Esc で離れる", 40, height - 40, width - 80);
@@ -1060,7 +1072,7 @@ const build = () => {
     list.push(["画像生成のパネル（A4）", "216 × 176"]);
     list.push(["Write のパネル（A4）", "176 × 216"]);
   }
-  if (items.memo) list.push([`お題の三角紙（${state.team}）`, "200 × 140"]);
+  if (items.memo) list.push([`お題の三角紙${state.team ? `（${state.team}）` : ""}`, "200 × 140"]);
   const SHOW_NAMES = {observer: "観測", slides: "資料", video: "デモ動画"};
   if (state.ipads.pro !== "none") list.push([`iPad Pro 11″（${SHOW_NAMES[state.ipads.pro]}）`, "250 × 178"]);
   if (state.ipads.mini !== "none") list.push([`iPad mini（${SHOW_NAMES[state.ipads.mini]}）`, "200 × 140"]);
@@ -1137,6 +1149,15 @@ for (const id of ["hexSide", "clothD"]) {
     build();
   });
 }
+
+const memoTopic = document.getElementById("memoTopic");
+memoTopic.addEventListener("input", () => {
+  state.team = memoTopic.value.trim();
+  for (const [k, t] of texCache) {
+    if (k.startsWith("memo:") && k !== `memo:${state.team}`) { t.dispose(); texCache.delete(k); }
+  }
+  build();
+});
 
 const panel = document.getElementById("panel");
 const togglePanel = document.getElementById("togglePanel");
