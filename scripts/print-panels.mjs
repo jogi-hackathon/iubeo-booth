@@ -4,7 +4,8 @@
 //   print/file-panels-a3-tiles.pdf  A2 のパネル 1 枚を A3 2 枚に分けたもの。コンビニで刷れる
 //   print/file-panels-a2.pdf        A2 1 枚刷り。キンコーズなど A2 を刷れる店向け
 //   print/file-panels-a4.pdf        A4 1 枚刷り。家やコンビニのプリンタ向け
-//   print/png/*.png                 A4 版を 300 dpi の PNG にしたもの (macOS の swift で変換)
+//   print/file-cards-a4.pdf         ゲームの中と同じ大きさのカード。A4 に 4 枚ずつ。来場者に配る用
+//   print/png/*.png                 A4 版とカードを 300 dpi の PNG にしたもの (macOS の swift で変換)
 //
 // 座標はすべて mm、y は上向き。
 import {mkdir, writeFile} from "node:fs/promises";
@@ -20,6 +21,8 @@ const OUT = join(dirname(fileURLToPath(import.meta.url)), "..", "print");
 // A4 版は 2000 (0.1 m → 200 mm) で、トンボまで含めて A4 1 枚に収まる。
 const SCALE_A2 = 4400;
 const SCALE_A4 = 2000;
+// カードはゲームの中と同じ大きさ (1 m → 1000 mm)
+const SCALE_CARD = 1000;
 const BLEED = 3; // 仕上がり線の外に伸ばす黒。切りずれても白が出ないように
 const TAB = 12; // 継ぎ目で下になる側に残すのりしろ
 
@@ -301,10 +304,64 @@ const sheets = (paper, scale, name) =>
 await writeFile(join(OUT, "file-panels-a2.pdf"), sheets(A2, SCALE_A2, "A2"));
 await writeFile(join(OUT, "file-panels-a4.pdf"), sheets(A4, SCALE_A4, "A4"));
 
+// ---- 手のひらのカード --------------------------------------------------------------
+// 同じ種類を A4 縦に 2 × 2 で並べる。横長のカード (Web Search・画像生成) は 90° 回して置く。
+// カードの間は CARD_GAP だけ空け、塗り足しはその中に収める。トンボはカードの切り線を、並びの外の余白まで延ばして引く
+const CARD_GAP = 6;
+const CARD_BLEED = 2;
+
+const cardsPage = (f) => {
+  const [W, H] = sizeOf(f, SCALE_CARD);
+  const turn = W > H;
+  // 紙の上でカードが占める大きさ (回したあと)
+  const [cw, ch] = turn ? [H, W] : [W, H];
+  const size = A4;
+  const gridW = cw * 2 + CARD_GAP;
+  const gridH = ch * 2 + CARD_GAP;
+  const x0 = (size[0] - gridW) / 2;
+  const y0 = (size[1] - gridH) / 2 + 6; // 下の余白にラベルを置くぶん少し上げる
+  const out = [`q ${n(PT)} 0 0 ${n(PT)} 0 0 cm`];
+  const xs = [];
+  const ys = [];
+  for (let r = 0; r < 2; r++) {
+    for (let c = 0; c < 2; c++) {
+      const ox = x0 + c * (cw + CARD_GAP);
+      const oy = y0 + r * (ch + CARD_GAP);
+      // 塗り足しの外は切り抜いて、隣のカードにかからないようにする
+      out.push("q", `${n(ox - CARD_BLEED)} ${n(oy - CARD_BLEED)} ${n(cw + CARD_BLEED * 2)} ${n(ch + CARD_BLEED * 2)} re W n`);
+      // 横長のカードは反時計回りに 90° 回す: カードの (x, y) が紙の (ox + H - y, oy + x) に来る
+      out.push(turn ? `0 1 -1 0 ${n(ox + H)} ${n(oy)} cm` : `1 0 0 1 ${n(ox)} ${n(oy)} cm`);
+      out.push(...panelOps(f, SCALE_CARD), "Q");
+      xs.push(ox, ox + cw);
+      ys.push(oy, oy + ch);
+    }
+  }
+  const m = marks();
+  const gap = 2;
+  for (const x of new Set(xs)) {
+    m.line(x, y0 - CARD_BLEED - gap, x, y0 - CARD_BLEED - gap - MARK);
+    m.line(x, y0 + gridH + CARD_BLEED + gap, x, y0 + gridH + CARD_BLEED + gap + MARK);
+  }
+  for (const y of new Set(ys)) {
+    m.line(x0 - CARD_BLEED - gap, y, x0 - CARD_BLEED - gap - MARK, y);
+    m.line(x0 + gridW + CARD_BLEED + gap, y, x0 + gridW + CARD_BLEED + gap + MARK, y);
+  }
+  out.push(...m.ops);
+  out.push(...ruler(size[0] - 12 - 50, 6.5));
+  out.push("Q");
+  out.push(text(12, 9, 2.6, `IUBEO FILE CARD - ${f.title}   A4  x4   ${W.toFixed(0)} x ${H.toFixed(0)} mm (same size as in the game)`, "0.2"));
+  out.push(text(12, 5.6, 2.1, "Print at 100% (actual size). Cut along the marks; each mark line runs through a row or column of cards."));
+  out.push(text(size[0] - 12 - 50, 3.2, 2.1, "50 mm"));
+  return {size, content: out.join("\n")};
+};
+
+await writeFile(join(OUT, "file-cards-a4.pdf"), buildPdf(Object.values(FILES).map(cardsPage)));
+
 // A4 版を 300 dpi の PNG に
 await toPng(join(OUT, "file-panels-a4.pdf"), join(OUT, "png"), Object.keys(FILES).map((k) => `file-panel-a4-${k}`));
+await toPng(join(OUT, "file-cards-a4.pdf"), join(OUT, "png"), Object.keys(FILES).map((k) => `file-cards-a4-${k}`));
 
-for (const [name, scale] of [["A2", SCALE_A2], ["A4", SCALE_A4]]) {
+for (const [name, scale] of [["A2", SCALE_A2], ["A4", SCALE_A4], ["card", SCALE_CARD]]) {
   for (const f of files) {
     const [W, H] = sizeOf(f, scale);
     console.log(`${name}  ${f.title.padEnd(17)} ${W.toFixed(1)} × ${H.toFixed(1)} mm`);
