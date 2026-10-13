@@ -1010,14 +1010,21 @@ const build = () => {
     }
   }
 
-  // 中央: ファイルのパネル 3 枚を背中合わせにして、空きの 3 辺へ向ける
+  // 中央: ファイルのパネル 3 枚を、少しずつずらして回しながら雑多に積んでおく
   if (items.files) {
-    ["search", "image", "write"].forEach((kind, k) => {
-      const e = free[k];
+    const PILE = [
+      // [種類, 中心からのずれ x, z, 回転]
+      ["write", 0.06, -0.05, 0.55],
+      ["image", -0.07, 0.04, -0.45],
+      ["search", 0.02, 0.01, 0.14],
+    ];
+    PILE.forEach(([kind, dx, dz, turn], k) => {
       const [w, h] = SIZES[kind];
-      const b = standBoard(w, h, fileTex(kind));
-      b.position.set(e.n[0] * 0.12, TOP, e.n[1] * 0.12);
-      b.rotation.y = e.rotY;
+      const b = flatBoard(w, h, fileTex(kind));
+      // 表を上に向けて寝かせ、通路側から読める向きにする
+      b.rotation.set(-Math.PI / 2, 0, turn, "YXZ");
+      b.rotation.y = free[0].rotY;
+      b.position.set(dx, TOP + 0.003 + k * 0.0055, dz);
       booth.add(b);
     });
   }
@@ -1068,9 +1075,9 @@ const build = () => {
   const list = [];
   if (items.logo) list.push([`ロゴのカード（${items.cloth ? "クロスに貼る" : "天板に立てる"}）`, "390 × 143"]);
   if (items.files) {
-    list.push(["Web Search のパネル（A4）", "218 × 178"]);
-    list.push(["画像生成のパネル（A4）", "216 × 176"]);
-    list.push(["Write のパネル（A4）", "176 × 216"]);
+    list.push(["Web Search のパネル（A4・積む）", "218 × 178"]);
+    list.push(["画像生成のパネル（A4・積む）", "216 × 176"]);
+    list.push(["Write のパネル（A4・積む）", "176 × 216"]);
   }
   if (items.memo) list.push([`お題の三角紙${state.team ? `（${state.team}）` : ""}`, "200 × 140"]);
   const SHOW_NAMES = {observer: "観測", slides: "資料", video: "デモ動画"};
