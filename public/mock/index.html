@@ -111,55 +111,40 @@
     </section>
 
     <section>
-      <h2>机（長方形と仮定）</h2>
-      <div class="field">
-        <label for="tables">本数</label><output id="tablesOut"></output>
-        <input type="range" id="tables" min="1" max="2" step="1" value="1">
+      <h2>座り方</h2>
+      <div class="seg" id="modes">
+        <button type="button" data-mode="front-free" aria-pressed="true">通路側を空ける</button>
+        <button type="button" data-mode="front-seat" aria-pressed="false">通路側にも座る</button>
       </div>
-      <div class="field">
-        <label for="tableW">幅</label><output id="tableWOut"></output>
-        <input type="range" id="tableW" min="1200" max="2100" step="150" value="1800">
-      </div>
-      <div class="field">
-        <label for="tableD">奥行</label><output id="tableDOut"></output>
-        <input type="range" id="tableD" min="450" max="900" step="150" value="600">
-      </div>
+      <p class="note" id="modeNote"></p>
     </section>
 
     <section>
-      <h2>ブースの区画</h2>
+      <h2>六角形の机（写真からの推定）</h2>
       <div class="field">
-        <label for="boothW">間口</label><output id="boothWOut"></output>
-        <input type="range" id="boothW" min="1800" max="5000" step="100" value="2500">
+        <label for="hexL">長い対角（左右の角どうし）</label><output id="hexLOut"></output>
+        <input type="range" id="hexL" min="1200" max="2000" step="50" value="1600">
       </div>
       <div class="field">
-        <label for="boothD">奥行</label><output id="boothDOut"></output>
-        <input type="range" id="boothD" min="1500" max="3500" step="100" value="2200">
+        <label for="hexS">通路側と奥の辺</label><output id="hexSOut"></output>
+        <input type="range" id="hexS" min="500" max="1000" step="50" value="800">
       </div>
-    </section>
-
-    <section>
-      <h2>ロゴの置き方</h2>
-      <div class="seg" data-place="logo">
-        <button type="button" data-at="front" aria-pressed="true">クロスの前に貼る</button>
-        <button type="button" data-at="back" aria-pressed="false">机の奥に立てる</button>
-      </div>
-      <h2>ファイルのパネルの置き方</h2>
-      <div class="seg" data-place="files">
-        <button type="button" data-at="front" aria-pressed="false">クロスの前に貼る</button>
-        <button type="button" data-at="back" aria-pressed="true">机の奥に立てる</button>
+      <div class="field">
+        <label for="hexD">奥行（台形 2 台ぶん）</label><output id="hexDOut"></output>
+        <input type="range" id="hexD" min="1000" max="1600" step="50" value="1300">
       </div>
     </section>
 
     <section>
       <h2>置くもの</h2>
       <div class="chips" id="items">
+        <button type="button" class="chip" data-item="cloth" aria-pressed="true">白いクロス</button>
         <button type="button" class="chip" data-item="logo" aria-pressed="true">ロゴ（A3）</button>
         <button type="button" class="chip" data-item="files" aria-pressed="true">ファイルのパネル（A4）</button>
         <button type="button" class="chip" data-item="observer" aria-pressed="true">観測モニター</button>
         <button type="button" class="chip" data-item="spectator" aria-pressed="false">観戦モニター</button>
         <button type="button" class="chip" data-item="headsets" aria-pressed="true">ヘッドセット</button>
-        <button type="button" class="chip" data-item="stools" aria-pressed="true">椅子</button>
+        <button type="button" class="chip" data-item="chairs" aria-pressed="true">椅子</button>
         <button type="button" class="chip" data-item="led" aria-pressed="true">LED テープ</button>
         <button type="button" class="chip" data-item="people" aria-pressed="true">人</button>
       </div>
@@ -195,23 +180,20 @@ import {OrbitControls} from "three/addons/controls/OrbitControls.js";
 
 // ---- 状態 -------------------------------------------------------------
 const state = {
-  tables: 1,
-  tableW: 1.8,
-  tableD: 0.6,
-  boothW: 2.5,
-  boothD: 2.2,
-  // ロゴは通路から見えるようクロスの前面に、パネルとモニターは机の奥に
-  place: {logo: "front", files: "back"},
-  items: {logo: true, files: true, observer: true, spectator: false, headsets: true, stools: true, led: true, people: true},
+  hexL: 1.6,
+  hexS: 0.8,
+  hexD: 1.3,
+  // 六角形の辺に 1 つおきに 3 人が座り、中央を 120° ずつ囲む。IUBEO のサンドボックスと同じ形
+  mode: "front-free",
+  items: {cloth: true, logo: true, files: true, observer: true, spectator: false, headsets: true, chairs: true, led: true, people: true},
   dropped: [false, false, false],
 };
 
 // 寸法 (m)。ロゴとパネルは入稿データ (iubeo-booth/print) の仕上がり寸法
-const TABLE_H = 0.7;
-const CLOTH_TOP = TABLE_H + 0.035;
+const TOP = 0.7;             // 天板の高さ
+const CLOTH_MARGIN = 0.02;   // クロスが天板の縁から外へ出るぶん
 const CHAIR_GAP = 0.45;      // 机の縁から椅子の中心まで
-const SEAT_ROOM = 0.75;      // 机の縁から、座った人の背中側に要る奥行
-const STAFF_ROOM = 0.6;      // 机の奥に、説明する人が立つ奥行
+const SEAT_ROOM = 0.8;       // 机の縁から、座った人の背中側に要る奥行
 const SIZES = {
   laptop: [0.32, 0.22],
   monitor: [0.345, 0.194],   // 15.6 インチのモバイルモニター
@@ -219,13 +201,6 @@ const SIZES = {
   search: [0.218, 0.178],    // A4 版のファイルのパネル
   image: [0.216, 0.176],
   write: [0.176, 0.216],
-};
-const ITEM_NAMES = {
-  monitor: "15.6″ モニター",
-  logo: "ロゴのカード",
-  search: "Web Search のパネル",
-  image: "画像生成のパネル",
-  write: "Write のパネル",
 };
 
 // ---- レンダラーと場 ---------------------------------------------------
@@ -269,14 +244,16 @@ scene.add(grid);
 const M = {
   white: new THREE.MeshLambertMaterial({color: "#fbfbf9"}),
   cloth: new THREE.MeshLambertMaterial({color: "#ffffff"}),
-  boothFloor: new THREE.MeshLambertMaterial({color: "#f8f8f6"}),
+  wood: new THREE.MeshLambertMaterial({color: "#e6d3ab"}),
   dark: new THREE.MeshLambertMaterial({color: "#2a2a28"}),
+  chair: new THREE.MeshLambertMaterial({color: "#3a3a38"}),
   grey: new THREE.MeshLambertMaterial({color: "#bdbdb6"}),
+  leg: new THREE.MeshLambertMaterial({color: "#c4c6c8"}),
   ledOn: new THREE.MeshBasicMaterial({color: "#ffffff"}),
   ledOff: new THREE.MeshLambertMaterial({color: "#8c8c86"}),
   outline: new THREE.MeshBasicMaterial({color: "#1a1a1a", side: THREE.BackSide}),
   edge: new THREE.LineBasicMaterial({color: "#1d1d1b", transparent: true, opacity: 0.5}),
-  bound: new THREE.LineDashedMaterial({color: "#1d1d1b", dashSize: 0.12, gapSize: 0.08}),
+  seam: new THREE.LineBasicMaterial({color: "#8a7a5c"}),
 };
 
 // ---- 画面やパネルに貼る絵 (canvas テクスチャ) -------------------------
@@ -473,15 +450,6 @@ const box = (w, h, d, mat = M.white, edges = true) => {
   return edges ? withEdges(m) : m;
 };
 
-// 床まで届く白いクロスを掛けた机
-const table = (w, d) => {
-  const g = new THREE.Group();
-  const cloth = box(w + 0.04, CLOTH_TOP, d + 0.04, M.cloth);
-  cloth.position.y = CLOTH_TOP / 2;
-  g.add(cloth);
-  return g;
-};
-
 const laptop = (dropped) => {
   const g = new THREE.Group();
   const base = box(0.32, 0.018, 0.22, M.grey);
@@ -512,22 +480,6 @@ const headset = () => {
     g.add(cup);
   }
   g.traverse((o) => { o.castShadow = true; });
-  return g;
-};
-
-// 折りたたみ椅子の代わりの丸椅子
-const stool = () => {
-  const g = new THREE.Group();
-  const seat = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.04, 28), M.white);
-  seat.position.y = 0.45;
-  g.add(withEdges(seat, 40));
-  const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.43, 12), M.grey);
-  leg.position.y = 0.215;
-  g.add(leg);
-  const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.015, 28), M.grey);
-  foot.position.y = 0.008;
-  g.add(foot);
-  g.traverse((o) => { o.castShadow = true; o.receiveShadow = true; });
   return g;
 };
 
@@ -586,55 +538,6 @@ const standingPose = (lean = 0) => ({
   la: [-0.12, 0.08, 0], ra: [0.12, 0.08, 0.05],
   lt: [-0.12, 0.02, -0.12], rt: [0.12, 0.02, -0.07],
 });
-
-// 机の手前の縁に向かって座る 1 席 (x は席の中心、z は机の手前の縁)
-const seat = (index, x, z) => {
-  const g = new THREE.Group();
-  g.position.set(x, 0, z);
-  const dropped = state.dropped[index];
-  const lap = laptop(dropped);
-  lap.position.set(0, CLOTH_TOP, -0.17);
-  g.add(lap);
-  if (state.items.headsets) {
-    const hs = headset();
-    hs.position.set(0.25, CLOTH_TOP, -0.12);
-    hs.rotation.y = 0.4;
-    g.add(hs);
-  }
-  if (state.items.led) {
-    // 席ごとの LED テープ。クロスの前面、天板のすぐ下に貼る想定
-    const led = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.012, 0.004), dropped ? M.ledOff : M.ledOn);
-    led.position.set(0, TABLE_H - 0.03, 0.023);
-    g.add(led);
-    if (!dropped) {
-      const glow = new THREE.PointLight("#ffffff", 0.3, 0.8, 2);
-      glow.position.set(0, TABLE_H - 0.1, 0.12);
-      g.add(glow);
-    }
-  }
-  if (state.items.stools) {
-    const st = stool();
-    st.position.set(0, 0, CHAIR_GAP);
-    g.add(st);
-  }
-  if (state.items.people && !dropped) {
-    if (state.items.stools) {
-      g.add(skeleton(seatedPose()));
-    } else {
-      const p = skeleton(standingPose(0.06));
-      p.position.z = 0.3;
-      g.add(p);
-    }
-  }
-  const label = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.36, 0.045),
-    new THREE.MeshBasicMaterial({map: textTex(`席 ${index + 1}`, {size: 72}), transparent: true, depthWrite: false}),
-  );
-  label.rotation.x = -Math.PI / 2;
-  label.position.set(0, 0.004, CHAIR_GAP + 0.32);
-  g.add(label);
-  return g;
-};
 
 // 卓上に立てる板 (ロゴのカード、ファイルのパネル)。正面は +z、下端が y=0。
 // 机の高さに直に立てるとノート PC の画面に隠れるので、卓上イーゼルの受け棚で LIFT だけ持ち上げる
@@ -709,6 +612,165 @@ const monitor = (tex, {camera: cam = false} = {}) => {
   return g;
 };
 
+// ---- 六角形の机 -----------------------------------------------------
+// 台形の机 2 台を長い辺どうしでつないだ六角形。+z が通路側。
+// 頂点は通路側の辺から時計回り。辺 i は頂点 i → i+1
+const hexVerts = (L, S, D) => [
+  [-S / 2, D / 2], [S / 2, D / 2], [L / 2, 0], [S / 2, -D / 2], [-S / 2, -D / 2], [-L / 2, 0],
+];
+
+const hexEdges = (verts) => verts.map((a, i) => {
+  const b = verts[(i + 1) % verts.length];
+  const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+  const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  const t = [(b[0] - a[0]) / len, (b[1] - a[1]) / len];
+  // 外向きの法線。中心から辺の中点へ向かう側
+  let nrm = [t[1], -t[0]];
+  if (nrm[0] * mid[0] + nrm[1] * mid[1] < 0) nrm = [-nrm[0], -nrm[1]];
+  return {i, mid, len, t, n: nrm, rotY: Math.atan2(nrm[0], nrm[1])};
+});
+
+// 外形を外側へ m だけ広げる (辺ごとに平行移動した線の交点)
+const inflate = (verts, m) => {
+  const edges = hexEdges(verts);
+  return verts.map((_, i) => {
+    const e1 = edges[(i + verts.length - 1) % verts.length];
+    const e2 = edges[i];
+    const bis = [e1.n[0] + e2.n[0], e1.n[1] + e2.n[1]];
+    const k = m / (bis[0] * e2.n[0] + bis[1] * e2.n[1]);
+    return [verts[i][0] + bis[0] * k, verts[i][1] + bis[1] * k];
+  });
+};
+
+// 外形 (x, z) を、高さ y0 から y1 までの柱にする
+const prism = (verts, y0, y1, mat) => {
+  const shape = new THREE.Shape(verts.map(([x, z]) => new THREE.Vector2(x, -z)));
+  const geo = new THREE.ExtrudeGeometry(shape, {depth: y1 - y0, bevelEnabled: false});
+  geo.rotateX(-Math.PI / 2);
+  geo.translate(0, y0, 0);
+  const m = new THREE.Mesh(geo, mat);
+  m.castShadow = true; m.receiveShadow = true;
+  return withEdges(m, 30);
+};
+
+const hexTable = (verts, cloth) => {
+  const g = new THREE.Group();
+  if (cloth) {
+    // 白いクロスを床近くまで垂らした見立て
+    g.add(prism(inflate(verts, CLOTH_MARGIN), 0.02, TOP + 0.003, M.cloth));
+    return g;
+  }
+  g.add(prism(verts, TOP - 0.03, TOP, M.wood));
+  // 台形 2 台のつなぎ目
+  const seam = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(verts[5][0], TOP + 0.001, 0), new THREE.Vector3(verts[2][0], TOP + 0.001, 0)]),
+    M.seam,
+  );
+  g.add(seam);
+  // 脚は角の少し内側に、キャスター付き
+  for (const [x, z] of inflate(verts, -0.08)) {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, TOP - 0.1, 12), M.leg);
+    leg.position.set(x, 0.07 + (TOP - 0.1) / 2, z);
+    leg.castShadow = true;
+    g.add(leg);
+    const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.03, 16), M.leg);
+    wheel.rotation.z = Math.PI / 2;
+    wheel.position.set(x, 0.035, z);
+    g.add(wheel);
+  }
+  return g;
+};
+
+// 会場で借りるオフィスチェア。座面の前が -z
+const chair = () => {
+  const g = new THREE.Group();
+  const seat = box(0.46, 0.07, 0.44, M.chair);
+  seat.position.y = 0.45;
+  g.add(seat);
+  const back = box(0.44, 0.42, 0.04, M.chair);
+  back.position.set(0, 0.72, 0.22);
+  back.rotation.x = -0.1;
+  g.add(back);
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.36, 12), M.grey);
+  pole.position.y = 0.24;
+  g.add(pole);
+  for (let i = 0; i < 5; i++) {
+    const arm = box(0.3, 0.025, 0.04, M.chair, false);
+    const a = (i / 5) * Math.PI * 2;
+    arm.position.set(Math.cos(a) * 0.15, 0.06, Math.sin(a) * 0.15);
+    arm.rotation.y = -a;
+    g.add(arm);
+    const wheel = new THREE.Mesh(new THREE.SphereGeometry(0.025, 10, 8), M.chair);
+    wheel.position.set(Math.cos(a) * 0.29, 0.025, Math.sin(a) * 0.29);
+    g.add(wheel);
+  }
+  g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  return g;
+};
+
+// 辺に向かって座る 1 席。ローカル座標では机が -z 側、辺が z=0
+const seat = (index, edge) => {
+  const g = new THREE.Group();
+  g.position.set(edge.mid[0], 0, edge.mid[1]);
+  g.rotation.y = edge.rotY;
+  const dropped = state.dropped[index];
+  const {items} = state;
+  const lap = laptop(dropped);
+  lap.position.set(0, TOP, -0.17);
+  g.add(lap);
+  if (items.headsets) {
+    const hs = headset();
+    hs.position.set(0.24, TOP, -0.13);
+    hs.rotation.y = 0.4;
+    g.add(hs);
+  }
+  if (items.led) {
+    // 席ごとの LED テープ。天板の縁 (クロスがあればクロスの前面) に貼る想定
+    const out = items.cloth ? CLOTH_MARGIN + 0.003 : 0.003;
+    const led = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.012, 0.004), dropped ? M.ledOff : M.ledOn);
+    led.position.set(0, TOP - 0.02, out);
+    g.add(led);
+    if (!dropped) {
+      const glow = new THREE.PointLight("#ffffff", 0.3, 0.8, 2);
+      glow.position.set(0, TOP - 0.1, 0.12);
+      g.add(glow);
+    }
+  }
+  if (items.chairs) {
+    const c = chair();
+    c.position.set(0, 0, CHAIR_GAP);
+    g.add(c);
+  }
+  if (items.people && !dropped) {
+    if (items.chairs) {
+      g.add(skeleton(seatedPose()));
+    } else {
+      const p = skeleton(standingPose(0.06));
+      p.position.z = 0.3;
+      g.add(p);
+    }
+  }
+  const label = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.36, 0.045),
+    new THREE.MeshBasicMaterial({map: textTex(`席 ${index + 1}`, {size: 72}), transparent: true, depthWrite: false}),
+  );
+  label.rotation.x = -Math.PI / 2;
+  label.position.set(0, 0.004, CHAIR_GAP + 0.38);
+  g.add(label);
+  return g;
+};
+
+// 辺の位置と向きに合わせて物を置く。along は辺に沿ったずらし、inward は机の内側へのずらし
+const onEdge = (obj, edge, {along = 0, inward = 0, y = 0} = {}) => {
+  obj.position.set(
+    edge.mid[0] + edge.t[0] * along - edge.n[0] * inward,
+    y,
+    edge.mid[1] + edge.t[1] * along - edge.n[1] * inward,
+  );
+  obj.rotation.y = edge.rotY;
+  return obj;
+};
+
 // ---- 配置 ------------------------------------------------------------
 let booth = new THREE.Group();
 scene.add(booth);
@@ -720,133 +782,104 @@ const dispose = (obj) => {
   });
 };
 
+const MODE_NOTES = {
+  "front-free": "通路側の辺を空け、ロゴと観測モニターを通路に向ける。3 人は残りの辺から中央を囲む。",
+  "front-seat": "通路側の辺にも座る。通路から 1 人の画面が見える。ロゴと観測モニターは左手前の辺に寄せる。",
+};
+
 const build = () => {
   scene.remove(booth);
   dispose(booth);
   booth = new THREE.Group();
   scene.add(booth);
 
-  const {boothW: BW, boothD: BD, tableW: w, tableD: d, tables: n, items} = state;
-  const front = BD / 2;   // 通路側 (+z)
-  const back = -BD / 2;
-  const L = n * w;
+  const {hexL: L, hexS: S, hexD: D, items} = state;
+  const verts = hexVerts(L, S, D);
+  const edges = hexEdges(verts);
+  booth.add(hexTable(verts, items.cloth));
 
-  // 区画の床と境界線
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(BW, BD), M.boothFloor);
-  floor.rotation.x = -Math.PI / 2;
-  floor.position.y = 0.002;
-  floor.receiveShadow = true;
-  booth.add(floor);
-  const outline = new THREE.Line(
-    new THREE.BufferGeometry().setFromPoints([
-      [-BW / 2, back], [BW / 2, back], [BW / 2, front], [-BW / 2, front], [-BW / 2, back],
-    ].map(([x, z]) => new THREE.Vector3(x, 0.003, z))),
-    M.bound,
-  );
-  outline.computeLineDistances();
-  booth.add(outline);
-  floorText(booth, `間口 ${Math.round(BW * 1000)}`, 0, front + 0.16, 1.6, 0, {size: 56, mono: true});
-  floorText(booth, `奥行 ${Math.round(BD * 1000)}`, -BW / 2 - 0.18, 0, 1.6, Math.PI / 2, {size: 56, mono: true});
-  floorText(booth, "通　路", 0, front + 1.0, 2.6, 0, {size: 64, color: "#a3a39b"});
+  // 1 つおきの辺に座る。残りの 3 辺に、ロゴ・モニター・パネルを向ける
+  const seatEdges = state.mode === "front-free" ? [5, 1, 3] : [0, 2, 4];
+  const free = edges.filter((e) => !seatEdges.includes(e.i))
+    .sort((a, b) => b.mid[1] - a.mid[1] || a.mid[0] - b.mid[0]);
+  seatEdges.forEach((ei, k) => booth.add(seat(k, edges[ei])));
 
-  // 机は区画の奥に寄せ、後ろに説明する人が立つ場所を残す
-  const tz = back + STAFF_ROOM + d / 2;
-  const tableFront = tz + d / 2;
-  const tableBack = tz - d / 2;
-  for (let i = 0; i < n; i++) {
-    const t = table(w, d);
-    t.position.set(-L / 2 + w * (i + 0.5), 0, tz);
-    booth.add(t);
+  // 通路にいちばん近い空きの辺: 観測モニターとロゴ
+  const show = free[0];
+  if (items.observer) {
+    booth.add(onEdge(monitor(observerTex(), {camera: true}), show, {along: items.logo && !items.cloth ? -0.19 : 0, inward: 0.13, y: TOP}));
   }
-
-  // 手前の列: プレイヤー 3 人。通路に背を向けて座り、後ろを通る人に画面が見える
-  for (let i = 0; i < 3; i++) booth.add(seat(i, -L / 2 + L * (i + 0.5) / 3, tableFront + 0.02));
-
-  // 置く物を、クロスの前に貼る物と机の奥に立てる物に分ける
-  const front_ = [];
-  const back_ = [];
-  const put = (kind, keys) => (state.place[kind] === "front" ? front_ : back_).push(...keys);
-  if (items.files) put("files", ["search"]);
-  if (items.logo) put("logo", ["logo"]);
-  if (items.files) put("files", ["image", "write"]);
-
-  // 奥の列: 観測モニターを左端、観戦モニターを右端にして、間に掲示物を左から順に並べる
-  const row = [];
-  if (items.observer) row.push("observer");
-  row.push(...back_);
-  if (items.spectator) row.push("spectator");
-  const sizeOf = (k) => SIZES[k === "observer" || k === "spectator" ? "monitor" : k];
-  const GAP = 0.05;
-  const rowW = row.reduce((a, k) => a + sizeOf(k)[0], 0) + GAP * Math.max(0, row.length - 1);
-  let x = -rowW / 2;
-  for (const k of row) {
-    const [iw, ih] = sizeOf(k);
-    let obj;
-    if (k === "observer") obj = monitor(observerTex(), {camera: true});
-    else if (k === "spectator") obj = monitor(spectatorTex());
-    else obj = standBoard(iw, ih, k === "logo" ? logoTex() : fileTex(k));
-    obj.position.set(x + iw / 2, CLOTH_TOP, tableBack + 0.12);
-    booth.add(obj);
-    x += iw + GAP;
-  }
-
-  // クロスの前面: 天板のすぐ下、席ごとの LED テープより下に並べる
-  if (front_.length) {
-    const FGAP = 0.08;
-    const total = front_.reduce((a, k) => a + SIZES[k][0], 0) + FGAP * (front_.length - 1);
-    const top = TABLE_H - 0.06;
-    let cx = -total / 2;
-    for (const k of front_) {
-      const [iw, ih] = SIZES[k];
-      const b = flatBoard(iw, ih, k === "logo" ? logoTex() : fileTex(k));
-      b.position.set(cx + iw / 2, top - ih / 2, tableFront + 0.023);
-      booth.add(b);
-      cx += iw + FGAP;
+  if (items.logo) {
+    const [w, h] = SIZES.logo;
+    if (items.cloth) {
+      // クロスの前面、天板のすぐ下に貼る
+      const b = flatBoard(w, h, logoTex());
+      booth.add(onEdge(b, show, {inward: -(CLOTH_MARGIN + 0.003), y: TOP - 0.05 - h / 2}));
+    } else {
+      // クロスがなければ天板に立てる
+      booth.add(onEdge(standBoard(w, h, logoTex()), show, {along: items.observer ? 0.2 : 0, inward: 0.12, y: TOP}));
     }
+  }
+  if (items.spectator) {
+    booth.add(onEdge(monitor(spectatorTex()), free[1], {inward: 0.13, y: TOP}));
+  }
+
+  // 中央: ファイルのパネル 3 枚を背中合わせにして、空きの 3 辺へ向ける
+  if (items.files) {
+    ["search", "image", "write"].forEach((kind, k) => {
+      const e = free[k];
+      const [w, h] = SIZES[kind];
+      const b = standBoard(w, h, fileTex(kind));
+      b.position.set(e.n[0] * 0.12, TOP, e.n[1] * 0.12);
+      b.rotation.y = e.rotY;
+      booth.add(b);
+    });
   }
 
   if (items.people) {
-    // 机の奥で説明する人と、通路の来場者
+    // 机の奥で説明する人と、通路側から覗き込む来場者
+    const back = free[free.length - 1];
     const staff = skeleton(standingPose(0.02));
-    staff.position.set(L * 0.22, 0, back + STAFF_ROOM * 0.45);
-    staff.rotation.y = Math.PI;
+    onEdge(staff, back, {inward: -0.55});
+    staff.rotation.y = back.rotY;
     booth.add(staff);
-    // 来場者は通路の左右から覗き込む。正面の視界はふさがない
-    const v1 = skeleton(standingPose(0.05));
-    v1.position.set(-L / 2 - 0.25, 0, front + 0.35);
-    v1.rotation.y = 0.6;
-    booth.add(v1);
-    const v2 = skeleton(standingPose(0));
-    v2.position.set(L / 2 + 0.3, 0, front + 0.5);
-    v2.rotation.y = -0.7;
-    booth.add(v2);
+    for (const [along, out, turn] of [[-1.15, 0.55, 0.7], [1.2, 0.7, -0.75]]) {
+      const v = skeleton(standingPose(0.04));
+      onEdge(v, show, {along, inward: -out});
+      v.rotation.y = show.rotY + turn;
+      booth.add(v);
+    }
   }
 
   booth.traverse((o) => { if (o.isMesh && o.material !== M.outline && !o.material.transparent) o.receiveShadow = true; });
 
-  // 数字と注意
+  // ---- 数字と注意
   const mm = (v) => Math.round(v * 1000).toLocaleString("ja-JP");
-  const seatsDepth = items.stools ? SEAT_ROOM : 0.5;
-  const needD = STAFF_ROOM + d + seatsDepth;
+  const slant = edges[1].len;
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  const extend = ([x, z]) => { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); };
+  verts.forEach(extend);
+  for (const ei of seatEdges) {
+    const e = edges[ei];
+    extend([e.mid[0] + e.n[0] * SEAT_ROOM, e.mid[1] + e.n[1] * SEAT_ROOM]);
+  }
   const rows = [
-    ["机の合計", `${mm(L)} × ${mm(d)}`],
-    ["1 席あたりの机幅", mm(L / 3)],
-    ["机の奥に並べる物の幅", row.length ? `${mm(rowW)} / ${mm(L)}` : "—"],
-    ["要る奥行（説明 + 机 + 席）", mm(needD)],
+    ["机の外形", `${mm(L)} × ${mm(D)}`],
+    ["辺の長さ", `通路側・奥 ${mm(S)} / 斜め ${mm(slant)}`],
+    ["椅子まで含めた広さ", `${mm(x1 - x0)} × ${mm(z1 - z0)}`],
   ];
   document.getElementById("stats").innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
   const msgs = [];
-  if (rowW > L - 0.04) msgs.push("机の奥に並べる物が机に載り切らない。机を足すか、ロゴとパネルをクロスの前に貼る。");
-  if (L > BW + 1e-6) msgs.push("机が区画の間口からはみ出している。");
-  if (needD > BD + 1e-6) msgs.push("区画の奥行が足りない。説明する人の場所か、席の場所が通路にはみ出す。");
-  if (L / 3 < 0.55) msgs.push("1 席の机幅が 550 未満。ノート PC とヘッドセットを並べると窮屈。");
+  const shortest = Math.min(...seatEdges.map((ei) => edges[ei].len));
+  if (items.headsets && shortest < 0.62) msgs.push("座る辺が 620 未満。ノート PC とヘッドセットを並べると窮屈。");
+  if (S >= L - 0.1) msgs.push("通路側の辺が長い対角とほぼ同じで、六角形になっていない。");
   const warn = document.getElementById("warn");
   warn.hidden = msgs.length === 0;
   warn.textContent = msgs.join(" ");
+  document.getElementById("modeNote").textContent = MODE_NOTES[state.mode];
 
-  // 置いている物の一覧と寸法
   const list = [];
-  if (items.logo) list.push(["ロゴのカード（A3 から切り出し）", "390 × 143"]);
+  if (items.logo) list.push([`ロゴのカード（${items.cloth ? "クロスに貼る" : "天板に立てる"}）`, "390 × 143"]);
   if (items.files) {
     list.push(["Web Search のパネル（A4）", "218 × 178"]);
     list.push(["画像生成のパネル（A4）", "216 × 176"]);
@@ -854,20 +887,16 @@ const build = () => {
   }
   const monitors = (items.observer ? 1 : 0) + (items.spectator ? 1 : 0);
   if (monitors) list.push([`15.6″ モニター × ${monitors}`, "345 × 194"]);
+  if (items.chairs) list.push(["椅子 × 3（会場で借りる）", ""]);
   document.getElementById("itemList").innerHTML = list.map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join("");
 };
 
 // ---- 視点 ------------------------------------------------------------
 const VIEWS = {
-  visitor: () => ({pos: [0.4, 1.7, state.boothD / 2 + 2.6], target: [0, 0.8, -0.4]}),
-  // 座っている人の頭越しに、机の奥に並べた物を見下ろす
-  table: () => {
-    const back = -state.boothD / 2 + STAFF_ROOM;
-    const front = back + state.tableD;
-    return {pos: [0.3, 1.9, front + 1.25], target: [0, CLOTH_TOP + 0.15, back + 0.1]};
-  },
-  overview: () => ({pos: [state.boothW * 0.95, 3.2, state.boothD / 2 + 3.2], target: [0, 0.6, -0.1]}),
-  top: () => ({pos: [0, Math.max(state.boothW, state.boothD) * 1.5 + 1.2, 0.01], target: [0, 0, 0]}),
+  visitor: () => ({pos: [0.5, 1.65, state.hexD / 2 + 3.0], target: [0, 0.8, 0]}),
+  table: () => ({pos: [0.15, 2.45, state.hexD / 2 + 1.1], target: [0, TOP, -0.05]}),
+  overview: () => ({pos: [2.6, 3.0, 3.2], target: [0, 0.6, 0]}),
+  top: () => ({pos: [0, 4.6, 0.01], target: [0, 0, 0]}),
 };
 let tween = null;
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -889,14 +918,12 @@ document.getElementById("views").addEventListener("click", (e) => {
   const b = e.target.closest("button"); if (!b) return;
   pressOne(e.currentTarget, b); goTo(b.dataset.view);
 });
-for (const seg of document.querySelectorAll("[data-place]")) {
-  seg.addEventListener("click", (e) => {
-    const b = e.target.closest("button"); if (!b) return;
-    pressOne(seg, b);
-    state.place[seg.dataset.place] = b.dataset.at;
-    build();
-  });
-}
+document.getElementById("modes").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  pressOne(e.currentTarget, b);
+  state.mode = b.dataset.mode;
+  build();
+});
 document.getElementById("items").addEventListener("click", (e) => {
   const b = e.target.closest("button"); if (!b) return;
   const on = b.getAttribute("aria-pressed") !== "true";
@@ -913,22 +940,14 @@ document.getElementById("drops").addEventListener("click", (e) => {
 });
 
 const mmFmt = (v) => v.toLocaleString("ja-JP");
-const sliders = {
-  tables: {fmt: (v) => `${v} 本`, set: (v) => (state.tables = v), get: () => state.tables},
-  tableW: {fmt: mmFmt, set: (v) => (state.tableW = v / 1000), get: () => state.tableW * 1000},
-  tableD: {fmt: mmFmt, set: (v) => (state.tableD = v / 1000), get: () => state.tableD * 1000},
-  boothW: {fmt: mmFmt, set: (v) => (state.boothW = v / 1000), get: () => state.boothW * 1000},
-  boothD: {fmt: mmFmt, set: (v) => (state.boothD = v / 1000), get: () => state.boothD * 1000},
-};
-for (const [id, s] of Object.entries(sliders)) {
+for (const id of ["hexL", "hexS", "hexD"]) {
   const input = document.getElementById(id);
   const out = document.getElementById(`${id}Out`);
-  input.value = Math.round(s.get());
-  out.textContent = s.fmt(Math.round(s.get()));
+  input.value = Math.round(state[id] * 1000);
+  out.textContent = mmFmt(Number(input.value));
   input.addEventListener("input", () => {
-    const v = Number(input.value);
-    s.set(v);
-    out.textContent = s.fmt(v);
+    state[id] = Number(input.value) / 1000;
+    out.textContent = mmFmt(Number(input.value));
     build();
   });
 }
