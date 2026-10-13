@@ -3,7 +3,9 @@
 IUBEO の展示ブースで、前を通る人を MediaPipe のランドマークだけで映すモニター。
 映像は表示せず、ゲーム内のプレイヤーと同じ白い骨格だけを描く。画面の文字は IUBEO のロゴだけ。
 
-公開版: https://jogi-hackathon.github.io/iubeo-booth/ （`main` に入ると GitHub Actions で自動デプロイ）
+公開版: https://jogi-hackathon.github.io/iubeo-booth/ （道具の一覧。`main` に入ると GitHub Actions で自動デプロイ）
+
+観測: https://jogi-hackathon.github.io/iubeo-booth/observer/ （`observer/index.html`）
 
 伝票メーカー: https://jogi-hackathon.github.io/iubeo-booth/slip/ （ゲームの依頼伝票と同じ見た目で、中身を書き換えて PNG / PDF にする）
 
@@ -14,7 +16,7 @@ IUBEO の展示ブースで、前を通る人を MediaPipe のランドマーク
 ```sh
 pnpm install
 pnpm fetch:model   # wasm とモデルを public/mediapipe に置く（会場をオフラインで動かすため）
-pnpm dev           # http://localhost:5173
+pnpm dev           # http://localhost:5173 (観測は /observer/)
 ```
 
 `fetch:model` をしていなければ CDN から読み込む。Chrome 推奨。
