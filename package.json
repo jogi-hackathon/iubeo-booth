@@ -14,7 +14,8 @@
     "print:memo": "swift scripts/print-memo.swift print/memo-a4.pdf && swift scripts/pdf-to-png.swift print/memo-a4.pdf print/png 300 memo-a4"
   },
   "dependencies": {
-    "@mediapipe/tasks-vision": "^1.1.0"
+    "@mediapipe/tasks-vision": "^1.1.0",
+    "jspdf": "2.5.2"
   },
   "devDependencies": {
     "typescript": "^7.0.2",

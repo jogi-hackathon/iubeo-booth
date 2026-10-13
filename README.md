@@ -5,6 +5,8 @@ IUBEO の展示ブースで、前を通る人を MediaPipe のランドマーク
 
 公開版: https://jogi-hackathon.github.io/iubeo-booth/ （`main` に入ると GitHub Actions で自動デプロイ）
 
+伝票メーカー: https://jogi-hackathon.github.io/iubeo-booth/slip/ （ゲームの依頼伝票と同じ見た目で、中身を書き換えて PNG / PDF にする）
+
 ブースの 3D 模型: https://jogi-hackathon.github.io/iubeo-booth/mock/ （`public/mock/index.html`。机・モニター・ロゴ・ファイルのパネルを実寸で並べ、置き方を変えながら回して見られる）
 
 ## 起動
@@ -93,6 +95,17 @@ pnpm dev           # http://localhost:5173
 
 ロゴは 350 × 103 mm。トンボの位置で切ると、白い余白 20 mm 付きの 390 × 143 mm のカードになる。A3 の紙をそのままボードに貼ってもいい。
 刷り方はファイルのパネルと同じく、白黒、100%（実際のサイズ）で、「用紙に合わせる」は切る。作り直すときは `pnpm print:logo`。
+
+## 伝票メーカー
+
+`slip/index.html`（`src/slip/`）。ゲームの依頼伝票（`iubeo/frontend/src/game/slip/content.ts` の `paintSlip`）と同じ見た目で、伝票番号・フェーズ・タスク（種類とお題）・制限時間を書き換え、PNG か PDF にする。
+
+| 紙の大きさ | PDF | PNG |
+| --- | --- | --- |
+| A7 | 74 × 105 mm | 874 × 1240 px（300 dpi） |
+| T02 実寸 | 48 × 99 mm | 384 × 794 px（203 dpi） |
+
+ブースのサーマルプリンタ（Phomemo T02）はロール紙の幅が 53 mm で、印字できる幅は 48 mm（203 dpi で 384 ドット）。A7 で作った伝票は、アプリが紙の幅に合わせて縮めて刷る。縮めずに刷るなら「T02 実寸」を選ぶ。T02 は PC から刷れないので、スマホでページを開いて PNG を写真に保存し、Phomemo アプリの画像の印刷から刷る。
 
 ## お題の三角紙（入稿データ）
 
