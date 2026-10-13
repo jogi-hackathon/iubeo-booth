@@ -164,6 +164,7 @@
         <button type="button" class="chip" data-item="cloth" aria-pressed="true">白いクロス</button>
         <button type="button" class="chip" data-item="logo" aria-pressed="true">ロゴ（A3）</button>
         <button type="button" class="chip" data-item="files" aria-pressed="true">ファイルのパネル（A4）</button>
+        <button type="button" class="chip" data-item="memo" aria-pressed="true">お題の三角紙</button>
         <button type="button" class="chip" data-item="chairs" aria-pressed="true">椅子</button>
         <button type="button" class="chip" data-item="people" aria-pressed="true">人</button>
       </div>
@@ -204,7 +205,8 @@ const state = {
   clothD: 2.75,
   // 六角形の辺に 1 つおきに 3 人が座り、中央を 120° ずつ囲む。IUBEO のサンドボックスと同じ形
   mode: "front-free",
-  items: {cloth: true, logo: true, files: true, chairs: true, people: true},
+  items: {cloth: true, logo: true, files: true, memo: true, chairs: true, people: true},
+  team: "ゆーべお",
   // 持ち込む iPad に何を映すか。observer: 観測 (前面カメラで来場者を骨格にする) / slides: 資料 / video: デモ動画 / none: 置かない
   ipads: {pro: "observer", mini: "video"},
   dropped: [false, false, false],
@@ -223,6 +225,7 @@ const SIZES = {
   search: [0.218, 0.178],    // A4 版のファイルのパネル
   image: [0.216, 0.176],
   write: [0.176, 0.216],
+  memo: [0.2, 0.14],         // お題の三角紙 (ゲームの PC の横のメモと同じ 200 × 140)
 };
 
 // ---- レンダラーと場 ---------------------------------------------------
@@ -466,6 +469,33 @@ const videoTex = () => canvasTex("video", 1024, 728, (g, w, h) => {
   g.beginPath(); g.arc(100 + (w - 140) * 0.38, h - 45, 10, 0, Math.PI * 2); g.fill();
 });
 
+// お題の三角紙。ゲームの PC の横に置くお題のメモ (frontend/src/objects/pc/search/TaskMemo.tsx の paintMemo) を写し、
+// お題の語のところにチーム名を入れる
+const MEMO_FONT = '"Hiragino Sans", "Noto Sans JP", "Yu Gothic", sans-serif';
+const memoTex = (topic) => canvasTex(`memo:${topic}`, 512, 358, (ctx, width, height) => {
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, width, height);
+  ctx.strokeStyle = "#d8d8d4";
+  ctx.lineWidth = 6;
+  ctx.strokeRect(3, 3, width - 6, height - 6);
+  ctx.fillStyle = "#1d1d1f";
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "left";
+  ctx.font = `600 34px ${MEMO_FONT}`;
+  ctx.fillText("お題", 40, 56);
+  // お題の語は、幅に収まる最大のサイズ (96〜28px) まで大きくする
+  let size = 96;
+  for (; size > 28; size -= 4) {
+    ctx.font = `bold ${size}px ${MEMO_FONT}`;
+    if (ctx.measureText(topic).width <= width - 80) break;
+  }
+  ctx.font = `bold ${size}px ${MEMO_FONT}`;
+  ctx.fillText(topic, 40, height / 2 + 6, width - 80);
+  ctx.fillStyle = "#6e6e73";
+  ctx.font = `20px ${MEMO_FONT}`;
+  ctx.fillText("Esc で離れる", 40, height - 40, width - 80);
+});
+
 const IPAD_TEX = {observer: () => observerTex(), slides: () => slidesTex(), video: () => videoTex()};
 
 const textTex = (text, {size = 64, weight = 500, color = "#6f6f68", mono = false} = {}) =>
@@ -627,6 +657,33 @@ const flatBoard = (w, h, tex) => {
   const face = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshLambertMaterial({map: tex}));
   face.position.z = 0.0026;
   g.add(face);
+  return g;
+};
+
+// 紙を山折りにした三角の卓上カード。表の面はゲームと同じく後ろへ 0.5 rad 傾ける。正面は +z、下端が y=0
+const MEMO_TILT = 0.5;
+const tentCard = (w, h, tex) => {
+  const g = new THREE.Group();
+  const rise = h * Math.cos(MEMO_TILT);
+  const run = h * Math.sin(MEMO_TILT);
+  const face = (map, sign) => {
+    const m = new THREE.Mesh(
+      new THREE.PlaneGeometry(w, h),
+      map ? new THREE.MeshLambertMaterial({map}) : M.white,
+    );
+    // 下端を軸に立て、頂点で表と裏が出会うように傾ける
+    m.geometry.translate(0, h / 2, 0);
+    m.rotation.x = -MEMO_TILT * sign;
+    m.position.z = sign * run;
+    if (sign < 0) m.rotation.y = Math.PI;
+    m.castShadow = true;
+    return withEdges(m);
+  };
+  g.add(face(tex, 1));
+  g.add(face(null, -1));
+  g.position.y = 0;
+  g.userData.depth = run * 2;
+  g.userData.rise = rise;
   return g;
 };
 
@@ -919,10 +976,15 @@ const build = () => {
   // 通路にいちばん近い空きの辺: 観測モニターとロゴ
   const show = free[0];
   // 通路側の辺の天板に、iPad を 2 台並べて通路へ向ける
-  const ipads = [["pro", -0.25], ["mini", 0.25]].filter(([k]) => state.ipads[k] !== "none");
+  const ipads = [["pro", -0.27], ["mini", 0.27]].filter(([k]) => state.ipads[k] !== "none");
   for (const [k, along] of ipads) {
     const t = tablet(SIZES[k], IPAD_TEX[state.ipads[k]]());
     booth.add(onEdge(t, show, {along: ipads.length === 1 ? 0 : along, inward: 0.12, y: TOP}));
+  }
+  // お題の三角紙: iPad の間に置き、お題の語のところにチーム名
+  if (items.memo) {
+    const [w, h] = SIZES.memo;
+    booth.add(onEdge(tentCard(w, h, memoTex(state.team)), show, {inward: 0.14, y: TOP}));
   }
   if (items.logo) {
     const [w, h] = SIZES.logo;
@@ -998,6 +1060,7 @@ const build = () => {
     list.push(["画像生成のパネル（A4）", "216 × 176"]);
     list.push(["Write のパネル（A4）", "176 × 216"]);
   }
+  if (items.memo) list.push([`お題の三角紙（${state.team}）`, "200 × 140"]);
   const SHOW_NAMES = {observer: "観測", slides: "資料", video: "デモ動画"};
   if (state.ipads.pro !== "none") list.push([`iPad Pro 11″（${SHOW_NAMES[state.ipads.pro]}）`, "250 × 178"]);
   if (state.ipads.mini !== "none") list.push([`iPad mini（${SHOW_NAMES[state.ipads.mini]}）`, "200 × 140"]);
