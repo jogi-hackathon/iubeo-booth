@@ -137,23 +137,42 @@
     </section>
 
     <section>
+      <h2>iPad に映すもの</h2>
+      <div class="field">
+        <label>iPad Pro 11″</label>
+      </div>
+      <div class="seg" data-ipad="pro">
+        <button type="button" data-show="observer" aria-pressed="true">観測</button>
+        <button type="button" data-show="slides" aria-pressed="false">資料</button>
+        <button type="button" data-show="video" aria-pressed="false">デモ動画</button>
+        <button type="button" data-show="none" aria-pressed="false">置かない</button>
+      </div>
+      <div class="field">
+        <label>iPad mini</label>
+      </div>
+      <div class="seg" data-ipad="mini">
+        <button type="button" data-show="observer" aria-pressed="false">観測</button>
+        <button type="button" data-show="slides" aria-pressed="false">資料</button>
+        <button type="button" data-show="video" aria-pressed="true">デモ動画</button>
+        <button type="button" data-show="none" aria-pressed="false">置かない</button>
+      </div>
+    </section>
+
+    <section>
       <h2>置くもの</h2>
       <div class="chips" id="items">
         <button type="button" class="chip" data-item="cloth" aria-pressed="true">白いクロス</button>
         <button type="button" class="chip" data-item="logo" aria-pressed="true">ロゴ（A3）</button>
         <button type="button" class="chip" data-item="files" aria-pressed="true">ファイルのパネル（A4）</button>
-        <button type="button" class="chip" data-item="observer" aria-pressed="true">観測モニター</button>
-        <button type="button" class="chip" data-item="spectator" aria-pressed="false">観戦モニター</button>
         <button type="button" class="chip" data-item="headsets" aria-pressed="true">ヘッドセット</button>
         <button type="button" class="chip" data-item="chairs" aria-pressed="true">椅子</button>
-        <button type="button" class="chip" data-item="led" aria-pressed="true">LED テープ</button>
         <button type="button" class="chip" data-item="people" aria-pressed="true">人</button>
       </div>
       <ul class="items" id="itemList"></ul>
     </section>
 
     <section>
-      <h2>脱落の演出（席のライトを消す）</h2>
+      <h2>脱落した席（人と画面を消す）</h2>
       <div class="chips" id="drops">
         <button type="button" class="chip off" data-seat="0" aria-pressed="false">席 1</button>
         <button type="button" class="chip off" data-seat="1" aria-pressed="false">席 2</button>
@@ -186,7 +205,9 @@ const state = {
   clothD: 2.75,
   // 六角形の辺に 1 つおきに 3 人が座り、中央を 120° ずつ囲む。IUBEO のサンドボックスと同じ形
   mode: "front-free",
-  items: {cloth: true, logo: true, files: true, observer: true, spectator: false, headsets: true, chairs: true, led: true, people: true},
+  items: {cloth: true, logo: true, files: true, headsets: true, chairs: true, people: true},
+  // 持ち込む iPad に何を映すか。observer: 観測 (前面カメラで来場者を骨格にする) / slides: 資料 / video: デモ動画 / none: 置かない
+  ipads: {pro: "observer", mini: "video"},
   dropped: [false, false, false],
 };
 
@@ -197,7 +218,8 @@ const CHAIR_GAP = 0.45;      // 机の縁から椅子の中心まで
 const SEAT_ROOM = 0.8;       // 机の縁から、座った人の背中側に要る奥行
 const SIZES = {
   laptop: [0.32, 0.22],
-  monitor: [0.345, 0.194],   // 15.6 インチのモバイルモニター
+  pro: [0.2497, 0.1775],     // iPad Pro 11″ (横向き)
+  mini: [0.2, 0.14],         // iPad mini (持ち込む人の申告で約 200 × 140)
   logo: [0.39, 0.143],       // A3 に刷ったロゴを、余白 20 mm 付きで切ったカード
   search: [0.218, 0.178],    // A4 版のファイルのパネル
   image: [0.216, 0.176],
@@ -250,8 +272,6 @@ const M = {
   chair: new THREE.MeshLambertMaterial({color: "#3a3a38"}),
   grey: new THREE.MeshLambertMaterial({color: "#bdbdb6"}),
   leg: new THREE.MeshLambertMaterial({color: "#c4c6c8"}),
-  ledOn: new THREE.MeshBasicMaterial({color: "#ffffff"}),
-  ledOff: new THREE.MeshLambertMaterial({color: "#8c8c86"}),
   outline: new THREE.MeshBasicMaterial({color: "#1a1a1a", side: THREE.BackSide}),
   edge: new THREE.LineBasicMaterial({color: "#1d1d1b", transparent: true, opacity: 0.5}),
   seam: new THREE.LineBasicMaterial({color: "#8a7a5c"}),
@@ -389,11 +409,12 @@ const fileTex = (kind) => canvasTex(`file:${kind}`, 1024, 1024, (g, cw, ch) => {
   }
 });
 
-const observerTex = () => canvasTex("observer", 1024, 576, (g, w, h) => {
+// 観測: iPad の前面カメラで来場者を映し、骨格だけを出す画面 (iubeo-booth の観測アプリ)
+const observerTex = () => canvasTex("observer", 1024, 728, (g, w, h) => {
   g.fillStyle = "#f6f6f4"; g.fillRect(0, 0, w, h);
   drawLogo(g, 120, 50, 160);
-  drawFigure(g, w * 0.38, h * 0.95, 290);
-  drawFigure(g, w * 0.68, h * 0.98, 250);
+  drawFigure(g, w * 0.38, h * 0.95, 380);
+  drawFigure(g, w * 0.7, h * 0.98, 330);
 });
 
 const gameTex = (dark) => canvasTex(dark ? "game-dark" : "game", 640, 400, (g, w, h) => {
@@ -410,16 +431,43 @@ const gameTex = (dark) => canvasTex(dark ? "game-dark" : "game", 640, 400, (g, w
   g.fillStyle = INK; g.fillRect(w * 0.06, h * 0.07, w * 0.22, 6); g.fillRect(w * 0.06, h * 0.07 + 14, w * 0.15, 6);
 });
 
-const spectatorTex = () => canvasTex("spectator", 1024, 576, (g, w, h) => {
-  g.fillStyle = "#ebebe7"; g.fillRect(0, 0, w, h);
-  const src = gameTex(false).image;
-  const pw = (w - 48) / 3;
-  for (let i = 0; i < 3; i++) {
-    g.drawImage(src, 12 + i * (pw + 12), 150, pw, pw * 0.625);
-    g.strokeStyle = INK; g.lineWidth = 2; g.strokeRect(12 + i * (pw + 12), 150, pw, pw * 0.625);
-  }
+// 資料: 発表スライドの見立て。ロゴと見出し、構成図のような箱と線
+const slidesTex = () => canvasTex("slides", 1024, 728, (g, w, h) => {
+  g.fillStyle = "#ffffff"; g.fillRect(0, 0, w, h);
   drawLogo(g, 120, 60, 170);
+  g.fillStyle = INK;
+  g.fillRect(48, 120, 420, 14);
+  g.fillRect(48, 148, 300, 10);
+  const boxes = [[90, 300], [400, 230], [400, 400], [710, 300]];
+  g.strokeStyle = INK; g.lineWidth = 4;
+  g.beginPath();
+  g.moveTo(240, 360); g.lineTo(400, 290); g.moveTo(240, 360); g.lineTo(400, 460);
+  g.moveTo(550, 290); g.lineTo(710, 360); g.moveTo(550, 460); g.lineTo(710, 360);
+  g.stroke();
+  for (const [x, y] of boxes) {
+    g.fillStyle = "#ffffff"; g.fillRect(x, y, 150, 120);
+    g.strokeRect(x, y, 150, 120);
+    g.fillStyle = INK; g.fillRect(x + 20, y + 24, 90, 8); g.fillRect(x + 20, y + 44, 60, 6);
+  }
+  g.fillStyle = "#9a9a94";
+  for (let k = 0; k < 3; k++) g.fillRect(48, 600 + k * 28, 600 - k * 120, 8);
 });
+
+// デモ動画: ゲーム画面と、下に再生バー
+const videoTex = () => canvasTex("video", 1024, 728, (g, w, h) => {
+  g.fillStyle = "#111110"; g.fillRect(0, 0, w, h);
+  const src = gameTex(false).image;
+  const vh = w / 1.6;
+  g.drawImage(src, 0, (h - vh) / 2 - 30, w, vh);
+  g.fillStyle = "rgba(17,17,16,0.85)"; g.fillRect(0, h - 90, w, 90);
+  g.fillStyle = "#ffffff";
+  g.beginPath(); g.moveTo(40, h - 62); g.lineTo(40, h - 28); g.lineTo(68, h - 45); g.closePath(); g.fill();
+  g.fillStyle = "#5a5a56"; g.fillRect(100, h - 48, w - 140, 6);
+  g.fillStyle = "#ffffff"; g.fillRect(100, h - 48, (w - 140) * 0.38, 6);
+  g.beginPath(); g.arc(100 + (w - 140) * 0.38, h - 45, 10, 0, Math.PI * 2); g.fill();
+});
+
+const IPAD_TEX = {observer: () => observerTex(), slides: () => slidesTex(), video: () => videoTex()};
 
 const textTex = (text, {size = 64, weight = 500, color = "#6f6f68", mono = false} = {}) =>
   canvasTex(`t:${text}:${size}:${weight}:${color}:${mono}`, 1024, 128, (g, w, h) => {
@@ -586,30 +634,37 @@ const flatBoard = (w, h, tex) => {
   return g;
 };
 
-// 15.6 インチのモバイルモニター。折りたたみスタンドで机に置く。正面は +z、下端が y=0
-const monitor = (tex, {camera: cam = false} = {}) => {
-  const [w, h] = SIZES.monitor;
+// iPad を横向きにして、折りたたみのタブレットスタンドに立てる。正面は +z、下端が y=0
+const tablet = (size, tex) => {
+  const [w, h] = size;
   const g = new THREE.Group();
-  const lift = 0.03;
-  const frame = box(w + 0.012, h + 0.012, 0.012, M.dark);
-  frame.position.y = lift + h / 2;
-  frame.rotation.x = -0.1;
-  g.add(frame);
-  const screen = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({map: tex}));
-  screen.position.set(0, lift + h / 2, 0.0065);
-  screen.rotation.x = -0.1;
-  g.add(screen);
-  const foot = box(w * 0.6, 0.01, 0.12, M.grey);
-  foot.position.set(0, 0.005, -0.04);
-  g.add(foot);
-  const prop = box(w * 0.4, lift + 0.02, 0.01, M.grey, false);
-  prop.position.set(0, (lift + 0.02) / 2, -0.02);
-  g.add(prop);
-  if (cam) {
-    const webcam = box(0.08, 0.025, 0.03, M.dark, false);
-    webcam.position.set(0, lift + h + 0.022, -0.005);
-    g.add(webcam);
-  }
+  const lift = 0.025;
+  const lean = 0.28;
+  const inner = new THREE.Group();
+  inner.position.y = lift;
+  inner.rotation.x = -lean;
+  const body = box(w, h, 0.006, M.dark);
+  body.position.y = h / 2;
+  inner.add(body);
+  // 画面は縁を 7 mm 残す
+  const sw = w - 0.014;
+  const sh = h - 0.014;
+  const screen = new THREE.Mesh(new THREE.PlaneGeometry(sw, sh), new THREE.MeshBasicMaterial({map: tex}));
+  screen.position.set(0, h / 2, 0.0032);
+  inner.add(screen);
+  g.add(inner);
+  // スタンド: 受け台と、背中を支える板
+  const ledge = box(w * 0.5, 0.012, 0.03, M.grey, false);
+  ledge.position.set(0, lift - 0.006, 0.01);
+  g.add(ledge);
+  const backH = h * 0.75;
+  const back = box(w * 0.4, backH, 0.006, M.grey, false);
+  back.position.set(0, backH / 2, -0.06);
+  back.rotation.x = 0.35;
+  g.add(back);
+  const base = box(w * 0.5, 0.006, 0.12, M.grey);
+  base.position.set(0, 0.003, -0.03);
+  g.add(base);
   return g;
 };
 
@@ -801,18 +856,6 @@ const seat = (index, edge) => {
     hs.rotation.y = 0.4;
     g.add(hs);
   }
-  if (items.led) {
-    // 席ごとの LED テープ。天板の縁 (クロスがあればクロスの前面) に貼る想定
-    const out = items.cloth ? CLOTH_MARGIN : 0.003;
-    const led = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.012, 0.004), dropped ? M.ledOff : M.ledOn);
-    led.position.set(0, TOP - 0.02, out);
-    g.add(led);
-    if (!dropped) {
-      const glow = new THREE.PointLight("#ffffff", 0.3, 0.8, 2);
-      glow.position.set(0, TOP - 0.1, 0.12);
-      g.add(glow);
-    }
-  }
   if (items.chairs) {
     const c = chair();
     c.position.set(0, 0, CHAIR_GAP);
@@ -860,8 +903,8 @@ const dispose = (obj) => {
 };
 
 const MODE_NOTES = {
-  "front-free": "通路側の辺を空け、ロゴと観測モニターを通路に向ける。3 人は残りの辺から中央を囲む。",
-  "front-seat": "通路側の辺にも座る。通路から 1 人の画面が見える。ロゴと観測モニターは左手前の辺に寄せる。",
+  "front-free": "通路側の辺を空け、ロゴと iPad を通路に向ける。3 人は残りの辺から中央を囲む。",
+  "front-seat": "通路側の辺にも座る。通路から 1 人の画面が見える。ロゴと iPad は左手前の辺に寄せる。",
 };
 
 const build = () => {
@@ -885,8 +928,11 @@ const build = () => {
 
   // 通路にいちばん近い空きの辺: 観測モニターとロゴ
   const show = free[0];
-  if (items.observer) {
-    booth.add(onEdge(monitor(observerTex(), {camera: true}), show, {along: items.logo && !items.cloth ? -0.19 : 0, inward: 0.13, y: TOP}));
+  // 通路側の辺の天板に、iPad を 2 台並べて通路へ向ける
+  const ipads = [["pro", -0.25], ["mini", 0.25]].filter(([k]) => state.ipads[k] !== "none");
+  for (const [k, along] of ipads) {
+    const t = tablet(SIZES[k], IPAD_TEX[state.ipads[k]]());
+    booth.add(onEdge(t, show, {along: ipads.length === 1 ? 0 : along, inward: 0.12, y: TOP}));
   }
   if (items.logo) {
     const [w, h] = SIZES.logo;
@@ -895,12 +941,9 @@ const build = () => {
       const b = flatBoard(w, h, logoTex());
       booth.add(onEdge(b, show, {inward: -CLOTH_MARGIN, y: TOP - 0.05 - h / 2}));
     } else {
-      // クロスがなければ天板に立てる
-      booth.add(onEdge(standBoard(w, h, logoTex()), show, {along: items.observer ? 0.2 : 0, inward: 0.12, y: TOP}));
+      // クロスがなければ、iPad の後ろに立てる
+      booth.add(onEdge(standBoard(w, h, logoTex()), show, {inward: 0.3, y: TOP}));
     }
-  }
-  if (items.spectator) {
-    booth.add(onEdge(monitor(spectatorTex()), free[1], {inward: 0.13, y: TOP}));
   }
 
   // 中央: ファイルのパネル 3 枚を背中合わせにして、空きの 3 辺へ向ける
@@ -967,8 +1010,9 @@ const build = () => {
     list.push(["画像生成のパネル（A4）", "216 × 176"]);
     list.push(["Write のパネル（A4）", "176 × 216"]);
   }
-  const monitors = (items.observer ? 1 : 0) + (items.spectator ? 1 : 0);
-  if (monitors) list.push([`15.6″ モニター × ${monitors}`, "345 × 194"]);
+  const SHOW_NAMES = {observer: "観測", slides: "資料", video: "デモ動画"};
+  if (state.ipads.pro !== "none") list.push([`iPad Pro 11″（${SHOW_NAMES[state.ipads.pro]}）`, "250 × 178"]);
+  if (state.ipads.mini !== "none") list.push([`iPad mini（${SHOW_NAMES[state.ipads.mini]}）`, "200 × 140"]);
   if (items.chairs) list.push(["椅子 × 3（会場で借りる）", ""]);
   document.getElementById("itemList").innerHTML = list.map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join("");
 };
@@ -1006,6 +1050,14 @@ document.getElementById("modes").addEventListener("click", (e) => {
   state.mode = b.dataset.mode;
   build();
 });
+for (const seg of document.querySelectorAll("[data-ipad]")) {
+  seg.addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    pressOne(seg, b);
+    state.ipads[seg.dataset.ipad] = b.dataset.show;
+    build();
+  });
+}
 document.getElementById("items").addEventListener("click", (e) => {
   const b = e.target.closest("button"); if (!b) return;
   const on = b.getAttribute("aria-pressed") !== "true";
