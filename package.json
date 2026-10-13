@@ -13,7 +13,8 @@
     "print:logo": "node scripts/print-logo.mjs"
   },
   "dependencies": {
-    "@mediapipe/tasks-vision": "^1.1.0"
+    "@mediapipe/tasks-vision": "^1.1.0",
+    "jspdf": "2.5.2"
   },
   "devDependencies": {
     "typescript": "^7.0.2",
