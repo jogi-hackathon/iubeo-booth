@@ -174,9 +174,9 @@
     <section>
       <h2>伝票立て</h2>
       <div class="seg" id="slipHolders">
-        <button type="button" data-holder="clip" aria-pressed="true">クリップ（ゲーム）</button>
+        <button type="button" data-holder="clip" aria-pressed="false">クリップ（ゲーム）</button>
         <button type="button" data-holder="acrylic" aria-pressed="false">アクリル筒</button>
-        <button type="button" data-holder="spike" aria-pressed="false">伝票差し</button>
+        <button type="button" data-holder="spike" aria-pressed="true">伝票差し</button>
       </div>
     </section>
 
@@ -238,7 +238,7 @@ const state = {
   // ファイルの大きさ。palm: ゲームの中と同じ実物大 (名刺くらい) / a4: A4 に刷ったパネル
   fileSize: "palm",
   // 伝票立て。clip: ゲームの机にあるクリップ付きの柱 / acrylic: 上を斜めに切ったアクリルの筒 / spike: 針に刺す伝票差し
-  slipHolder: "clip",
+  slipHolder: "spike",
   team: "ゆーべお",
   // 持ち込む iPad に何を映すか。observer: 観測 (前面カメラで来場者を骨格にする) / slides: 資料 / video: デモ動画 / none: 置かない
   ipads: {pro: "observer", mini: "video"},
