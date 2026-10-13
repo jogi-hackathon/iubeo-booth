@@ -120,18 +120,10 @@
     </section>
 
     <section>
-      <h2>六角形の机（写真からの推定）</h2>
+      <h2>六角形の机</h2>
       <div class="field">
-        <label for="hexL">長い対角（左右の角どうし）</label><output id="hexLOut"></output>
-        <input type="range" id="hexL" min="1200" max="2000" step="50" value="1600">
-      </div>
-      <div class="field">
-        <label for="hexS">通路側と奥の辺</label><output id="hexSOut"></output>
-        <input type="range" id="hexS" min="500" max="1000" step="50" value="800">
-      </div>
-      <div class="field">
-        <label for="hexD">奥行（台形 2 台ぶん）</label><output id="hexDOut"></output>
-        <input type="range" id="hexD" min="1000" max="1600" step="50" value="1300">
+        <label for="hexSide">1 辺</label><output id="hexSideOut"></output>
+        <input type="range" id="hexSide" min="700" max="1300" step="10" value="1000">
       </div>
     </section>
 
@@ -189,9 +181,8 @@ import {OrbitControls} from "three/addons/controls/OrbitControls.js";
 
 // ---- 状態 -------------------------------------------------------------
 const state = {
-  hexL: 1.6,
-  hexS: 0.8,
-  hexD: 1.3,
+  // 正六角形の 1 辺 (m)。台形の机 2 台をつないで正六角形になる
+  hexSide: 1.0,
   clothD: 2.75,
   // 六角形の辺に 1 つおきに 3 人が座り、中央を 120° ずつ囲む。IUBEO のサンドボックスと同じ形
   mode: "front-free",
@@ -879,7 +870,9 @@ const build = () => {
   booth = new THREE.Group();
   scene.add(booth);
 
-  const {hexL: L, hexS: S, hexD: D, items} = state;
+  const {hexSide: S, items} = state;
+  const L = S * 2;            // 左右の角どうし
+  const D = S * Math.sqrt(3); // 通路側の辺から奥の辺まで
   const verts = hexVerts(L, S, D);
   const edges = hexEdges(verts);
   booth.add(hexTable(verts, items.cloth));
@@ -941,7 +934,6 @@ const build = () => {
 
   // ---- 数字と注意
   const mm = (v) => Math.round(v * 1000).toLocaleString("ja-JP");
-  const slant = edges[1].len;
   let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
   const extend = ([x, z]) => { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); };
   verts.forEach(extend);
@@ -950,15 +942,14 @@ const build = () => {
     extend([e.mid[0] + e.n[0] * SEAT_ROOM, e.mid[1] + e.n[1] * SEAT_ROOM]);
   }
   const rows = [
-    ["机の外形", `${mm(L)} × ${mm(D)}`],
-    ["辺の長さ", `通路側・奥 ${mm(S)} / 斜め ${mm(slant)}`],
+    ["1 辺", mm(S)],
+    ["机の外形（角から角 × 辺から辺）", `${mm(L)} × ${mm(D)}`],
     ["椅子まで含めた広さ", `${mm(x1 - x0)} × ${mm(z1 - z0)}`],
   ];
   document.getElementById("stats").innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
   const msgs = [];
   const shortest = Math.min(...seatEdges.map((ei) => edges[ei].len));
   if (items.headsets && shortest < 0.62) msgs.push("座る辺が 620 未満。ノート PC とヘッドセットを並べると窮屈。");
-  if (S >= L - 0.1) msgs.push("通路側の辺が長い対角とほぼ同じで、六角形になっていない。");
   const warn = document.getElementById("warn");
   warn.hidden = msgs.length === 0;
   warn.textContent = msgs.join(" ");
@@ -984,10 +975,10 @@ const build = () => {
 
 // ---- 視点 ------------------------------------------------------------
 const VIEWS = {
-  visitor: () => ({pos: [0.5, 1.65, state.hexD / 2 + 3.0], target: [0, 0.8, 0]}),
-  table: () => ({pos: [0.15, 2.45, state.hexD / 2 + 1.1], target: [0, TOP, -0.05]}),
-  overview: () => ({pos: [2.6, 3.0, 3.2], target: [0, 0.6, 0]}),
-  top: () => ({pos: [0, 4.6, 0.01], target: [0, 0, 0]}),
+  visitor: () => ({pos: [0.5, 1.65, (state.hexSide * Math.sqrt(3)) / 2 + 3.0], target: [0, 0.8, 0]}),
+  table: () => ({pos: [0.15, 2.6, (state.hexSide * Math.sqrt(3)) / 2 + 1.1], target: [0, TOP, -0.05]}),
+  overview: () => ({pos: [1.6 + state.hexSide * 1.2, 2.4 + state.hexSide * 0.8, 2.2 + state.hexSide * 1.2], target: [0, 0.6, 0]}),
+  top: () => ({pos: [0, 2.8 + state.hexSide * 2.2, 0.01], target: [0, 0, 0]}),
 };
 let tween = null;
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -1031,7 +1022,7 @@ document.getElementById("drops").addEventListener("click", (e) => {
 });
 
 const mmFmt = (v) => v.toLocaleString("ja-JP");
-for (const id of ["hexL", "hexS", "hexD", "clothD"]) {
+for (const id of ["hexSide", "clothD"]) {
   const input = document.getElementById(id);
   const out = document.getElementById(`${id}Out`);
   input.value = Math.round(state[id] * 1000);
