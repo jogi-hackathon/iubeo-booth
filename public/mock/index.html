@@ -176,6 +176,7 @@
       <div class="seg" id="slipHolders">
         <button type="button" data-holder="clip" aria-pressed="true">クリップ（ゲーム）</button>
         <button type="button" data-holder="acrylic" aria-pressed="false">アクリル筒</button>
+        <button type="button" data-holder="spike" aria-pressed="false">伝票差し</button>
       </div>
     </section>
 
@@ -236,7 +237,7 @@ const state = {
   items: {cloth: true, logo: true, files: true, printer: true, memo: true, chairs: true, people: true},
   // ファイルの大きさ。palm: ゲームの中と同じ実物大 (名刺くらい) / a4: A4 に刷ったパネル
   fileSize: "palm",
-  // 伝票立て。clip: ゲームの机にあるクリップ付きの柱 / acrylic: 上を斜めに切ったアクリルの筒
+  // 伝票立て。clip: ゲームの机にあるクリップ付きの柱 / acrylic: 上を斜めに切ったアクリルの筒 / spike: 針に刺す伝票差し
   slipHolder: "clip",
   team: "ゆーべお",
   // 持ち込む iPad に何を映すか。observer: 観測 (前面カメラで来場者を骨格にする) / slides: 資料 / video: デモ動画 / none: 置かない
@@ -859,7 +860,35 @@ const acrylicHolder = () => {
   return g;
 };
 
-const slipHolder = () => (state.slipHolder === "acrylic" ? acrylicHolder() : memoStand());
+// 伝票差し: 黒い円盤の台座に金属の針、先に黒いゴムのキャップ。伝票は真ん中を刺して平らに重ねる
+const SPIKE = {baseRadius: 0.04, baseHeight: 0.012, rodRadius: 0.0018, rodHeight: 0.15, capHeight: 0.014};
+const metalMat = new THREE.MeshLambertMaterial({color: "#d0d2d4"});
+const spikeHolder = () => {
+  const S = SPIKE;
+  const g = new THREE.Group();
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(S.baseRadius, S.baseRadius, S.baseHeight, 40), M.dark);
+  base.position.y = S.baseHeight / 2;
+  g.add(withEdges(base, 40));
+  const rod = new THREE.Mesh(new THREE.CylinderGeometry(S.rodRadius, S.rodRadius, S.rodHeight, 10), metalMat);
+  rod.position.y = S.baseHeight + S.rodHeight / 2;
+  g.add(rod);
+  const cap = new THREE.Mesh(new THREE.CylinderGeometry(S.rodRadius * 1.6, S.rodRadius * 2.4, S.capHeight, 12), M.dark);
+  cap.position.y = S.baseHeight + S.rodHeight - S.capHeight / 2 + 0.004;
+  g.add(cap);
+  // 刺した伝票。表を上に、少しずつ向きと高さを変えて重ねる
+  const mat = new THREE.MeshLambertMaterial({map: slipTex(), transparent: true, alphaTest: 0.5, side: THREE.DoubleSide});
+  [[0.004, 0.0], [0.009, 0.5], [0.015, -0.35]].forEach(([y, turn]) => {
+    const slip = new THREE.Mesh(new THREE.PlaneGeometry(SLIP.w, SLIP.h), mat);
+    slip.rotation.set(-Math.PI / 2, 0, turn, "YXZ");
+    slip.position.y = S.baseHeight + y;
+    g.add(slip);
+  });
+  g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  return g;
+};
+
+const SLIP_HOLDERS = {clip: memoStand, acrylic: acrylicHolder, spike: spikeHolder};
+const slipHolder = () => SLIP_HOLDERS[state.slipHolder]();
 
 // 58 mm 幅のサーマルプリンタ。上の口から刷った伝票が少し出ている。正面は +z
 const thermalPrinter = () => {
@@ -1156,7 +1185,7 @@ scene.add(booth);
 const dispose = (obj) => {
   obj.traverse((o) => {
     if (o.geometry && o.geometry !== sphereGeo && o.geometry !== cylGeo) o.geometry.dispose();
-    if (o.material && !Object.values(M).includes(o.material) && o.material !== acrylicMat) o.material.dispose();
+    if (o.material && !Object.values(M).includes(o.material) && o.material !== acrylicMat && o.material !== metalMat) o.material.dispose();
   });
 };
 
@@ -1306,7 +1335,8 @@ const build = () => {
   }
   if (items.printer) {
     list.push(["サーマルプリンタ（58 mm）", "110 × 120"]);
-    list.push([state.slipHolder === "acrylic" ? "伝票立て（アクリル筒）× 2" : "伝票のメモ置き（クリップ）× 2", "伝票 58 × 120"]);
+    const HOLDER_NAMES = {clip: "伝票のメモ置き（クリップ）", acrylic: "伝票立て（アクリル筒）", spike: "伝票差し"};
+    list.push([`${HOLDER_NAMES[state.slipHolder]} × 2`, "伝票 58 × 120"]);
   }
   if (items.memo) list.push([`お題の三角紙${state.team ? `（${state.team}）` : ""}`, "200 × 140"]);
   const SHOW_NAMES = {observer: "観測", slides: "資料", video: "デモ動画"};
